@@ -1,20 +1,36 @@
 "use client";
 import { useState } from "react";
 import { usePositions } from "@/lib/api/hooks/usePositions";
-import { fmtUSD } from "@/lib/utils/formatters";
+import { fmtUSD, pnlClass } from "@/lib/utils/formatters";
 import ExitPlanModal from "@/components/positions/ExitPlanModal";
 import clsx from "clsx";
+import ErrorBanner from "@/components/ui/ErrorBanner";
+import { SkeletonRow } from "@/components/ui/Skeleton";
 
 type SortKey = "symbol" | "leverage" | "entry_price" | "current_price" | "unrealized_pnl" | "side";
 
 export function PositionsPanel() {
-  const { positionsByModel, isLoading } = usePositions();
+  const { positionsByModel, isLoading, isError } = usePositions();
   const [modalOpen, setModalOpen] = useState(false);
   const [modalCtx, setModalCtx] = useState<{ modelId: string; symbol: string; } | null>(null);
   const [sortKey, setSortKey] = useState<SortKey>("unrealized_pnl");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
 
-  if (isLoading) return <div className="text-sm text-zinc-400">加载持仓中…</div>;
+  if (isLoading)
+    return (
+      <div className="rounded-md border border-white/10 bg-zinc-950 p-4">
+        <div className="mb-2 text-sm text-zinc-400">加载持仓中…</div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-left text-xs">
+            <tbody>
+              <SkeletonRow cols={7} />
+              <SkeletonRow cols={7} />
+              <SkeletonRow cols={7} />
+            </tbody>
+          </table>
+        </div>
+      </div>
+    );
 
   if (!positionsByModel.length) {
     return <div className="text-sm text-zinc-400">暂无持仓。</div>;
@@ -22,6 +38,7 @@ export function PositionsPanel() {
 
   return (
     <div className="space-y-6">
+      <ErrorBanner message={isError ? "上游持仓接口暂时不可用，请稍后重试。" : undefined} />
       {positionsByModel.map((m) => {
         const positionsRaw = Object.values(m.positions || {});
         type PositionWithSide = typeof positionsRaw[number] & { side: "LONG" | "SHORT" };
@@ -49,8 +66,8 @@ export function PositionsPanel() {
               <div className="text-xs text-zinc-400">未实现盈亏合计：<span className={totalUnreal >= 0 ? "text-green-400" : "text-red-400"}>{fmtUSD(totalUnreal)}</span></div>
             </div>
             <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs">
-                <thead className="text-zinc-400">
+              <table className="w-full text-left text-[11px]">
+                <thead className="sticky top-[42px] z-10 bg-zinc-950 text-zinc-400">
                   <tr className="border-b border-white/10">
                     {[
                       { k: "side", label: "方向" },
@@ -60,7 +77,7 @@ export function PositionsPanel() {
                       { k: "current_price", label: "当前价" },
                       { k: "unrealized_pnl", label: "未实现盈亏" },
                     ].map((c) => (
-                      <th key={c.k} className="py-2 pr-4">
+                      <th key={c.k} className="py-1.5 pr-3">
                         <button
                           className={clsx("flex items-center gap-1 hover:text-zinc-200", sortKey === (c.k as SortKey) && "text-zinc-200")}
                           onClick={() => {
@@ -73,7 +90,7 @@ export function PositionsPanel() {
                         </button>
                       </th>
                     ))}
-                    <th className="py-2 pr-4">退出计划</th>
+                    <th className="py-1.5 pr-3">退出计划</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -81,16 +98,16 @@ export function PositionsPanel() {
                     const side = p.quantity > 0 ? "LONG" : "SHORT";
                     return (
                       <tr key={i} className="border-b border-white/5">
-                        <td className="py-2 pr-4">{side}</td>
-                        <td className="py-2 pr-4">{p.symbol}</td>
-                        <td className="py-2 pr-4">{p.leverage}x</td>
-                        <td className="py-2 pr-4">{fmtUSD(p.entry_price)}</td>
-                        <td className="py-2 pr-4">{fmtUSD(p.current_price)}</td>
-                        <td className={`py-2 pr-4 ${p.unrealized_pnl >= 0 ? "text-green-400" : "text-red-400"}`}>{fmtUSD(p.unrealized_pnl)}</td>
-                        <td className="py-2 pr-4">
+                        <td className="py-1.5 pr-3">{side}</td>
+                        <td className="py-1.5 pr-3">{p.symbol}</td>
+                        <td className="py-1.5 pr-3">{p.leverage}x</td>
+                        <td className="py-1.5 pr-3 tabular-nums">{fmtUSD(p.entry_price)}</td>
+                        <td className="py-1.5 pr-3 tabular-nums">{fmtUSD(p.current_price)}</td>
+                        <td className={clsx("py-1.5 pr-3 tabular-nums", pnlClass(p.unrealized_pnl))}>{fmtUSD(p.unrealized_pnl)}</td>
+                        <td className="py-1.5 pr-3">
                           {p.exit_plan?.profit_target || p.exit_plan?.stop_loss || p.exit_plan?.invalidation_condition ? (
                             <button
-                              className="rounded border border-white/10 px-2 py-1 text-[11px] text-zinc-200 hover:bg-white/5"
+                              className="rounded border border-white/10 px-2 py-0.5 text-[11px] text-zinc-200 hover:bg-white/5"
                               onClick={() => {
                                 setModalCtx({ modelId: m.id, symbol: p.symbol });
                                 setModalOpen(true);

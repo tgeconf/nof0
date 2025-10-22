@@ -27,7 +27,7 @@
 - [ ] 颜色编码（盈亏上/下色）
 
 ## 后续
-- [ ] Recharts 账户价值折线图（since-inception-values）
+- [x] Recharts 账户价值折线图（since-inception-values）
 - [ ] Zustand 状态管理与筛选器
 - [ ] shadcn/ui 集成与组件替换
 - [ ] 部署脚本与 README
@@ -35,6 +35,23 @@
 ---
 
 ## 新增待办（深挖清单）
+
+### High Priority（1-2 天）
+- [ ] Leaderboard 实现（新接口 `/leaderboard`）
+  - [ ] 新增 hook：`useLeaderboard`（`equity`、`return_pct`、`num_trades`、`num_wins/num_losses`、`sharpe`）
+  - [ ] 排名表：排序（收益率/净值/夏普/交易数），百分比格式
+  - [ ] Top 1 高亮，预留 `/models/[id]` 跳转
+- [ ] Positions 汇总增强（对齐 `account-totals`）
+  - [ ] 可用现金、已实现/未实现 PnL、风险金额、置信度
+  - [ ] 行内徽标/提示（confidence/risk）
+- [ ] 错误/网络状态
+  - [ ] 全局错误提示条（上游错误/离线）
+  - [ ] SWR 重试/退避（指数退避，最多 3 次）
+- [ ] 账户价值图表（`since-inception-values` + `account-totals`）
+  - [x] 基于两端点合并；会话内增量累积（Zustand）
+  - [ ] 采样与插值；空数据提示与调试链接
+- [ ] 代理可配置化
+  - [ ] `.env`：`NOF1_BASE`，默认 `https://nof1.ai/api`；最简 GET 5s 缓存
 
 ### A. API/数据层
 - [ ] Proxy 可配置化：从 `process.env.NOF1_BASE` 读取上游地址，默认 `https://nof1.ai/api`
@@ -53,12 +70,14 @@
 - [ ] Chart：多模型账户价值折线图（ALL/72H，$/% 切换）
 - [ ] 骨架屏与空态：loading skeleton、空数据提示
 - [ ] 错误状态条：上游错误统一在页面顶部显示可关闭的提示条
+- [x] 表格粘性表头、PnL 颜色工具、价格/表格骨架屏
 
 ### C. 设计与样式
 - [ ] 深色主题 token：语义化颜色/间距/圆角变量
 - [ ] 盈亏颜色规则：强弱/闪烁动画仅在变动时触发
 - [ ] 等宽数字与箭头符号：涨跌视觉强化
 - [ ] 终端风格微调：扫描线、栅格、轻噪声背景开关
+- [x] 全局 Tabular 数字、终端扫描线背景
 
 ### D. 性能与稳定性
 - [ ] SWR 重试与退避：指数退避、最大重试、离线提示

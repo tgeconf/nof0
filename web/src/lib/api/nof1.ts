@@ -10,6 +10,7 @@ export const endpoints = {
   accountTotals: (lastHourlyMarker?: number) =>
     local(`/account-totals${lastHourlyMarker != null ? `?lastHourlyMarker=${lastHourlyMarker}` : ""}`),
   sinceInceptionValues: () => local("/since-inception-values"),
+  leaderboard: () => local("/leaderboard"),
 };
 
 export { fetcher };

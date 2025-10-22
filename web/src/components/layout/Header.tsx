@@ -5,7 +5,7 @@ import Link from "next/link";
 export function Header() {
   return (
     <header className="sticky top-0 z-50 w-full border-b border-white/10 bg-black/70 backdrop-blur">
-      <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-3 text-sm text-zinc-200">
+      <div className="flex w-full items-center justify-between px-3 py-2 text-xs text-zinc-200">
         <Link href="/" className="font-semibold tracking-wide text-purple-300">
           nof0
         </Link>

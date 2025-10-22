@@ -4,7 +4,7 @@
 
 **nof0** 是 nof1.ai 的仿盘版本，专注于展示 AI 交易代理的逻辑、提示词和持仓信息。MVP 版本采用 Next.js 实现，**直接使用 nof1.ai 提供的公开 REST API**，无需 mock 数据，实现快速真实测试。
 
-## 🎉 重大发现：nof1.ai REST API
+## 重大发现：nof1.ai REST API
 
 通过浏览器网络分析，我们发现 nof1.ai 提供了完整的公开 REST API！这意味着我们可以直接使用真实数据，无需创建 mock 数据层，大大加速开发进程。
 
@@ -302,6 +302,283 @@ GET /api/analytics
    - 桌面优先
    - 移动端适配（表格横向滚动）
 
+## 专业交易系统 UI/UX 设计原则
+
+### 核心设计理念
+
+#### 1. 信息层次与视觉扫描
+专业交易员需要在秒级做出决策，UI必须支持**快速视觉扫描**：
+
+- **F型扫描模式**
+  - 最重要信息放在左上角（价格、盈亏）
+  - 次要信息沿左侧纵向排列
+  - 详细数据在右侧或底部
+
+- **视觉权重分配**
+  - 大字号：当前价格、总盈亏、账户价值
+  - 中字号：持仓详情、交易历史
+  - 小字号：时间戳、技术指标
+
+- **颜色编码系统**
+  - 红色：亏损、警告、负向变化（`text-red-500/600`）
+  - 绿色：盈利、成功、正向变化（`text-green-500/600`）
+  - 灰色：中性数据（`text-gray-400/500`）
+  - 黄色/琥珀色：警示、待确认（`text-amber-500`）
+  - 蓝色/紫色：品牌色、链接、次要操作
+
+#### 2. 数据密度与可读性平衡
+
+**高密度原则**：
+- 单屏显示尽可能多的关键信息
+- 行高：表格使用 `leading-tight` (1.25)
+- 间距：组件间 `gap-2` 或 `gap-3`（8-12px）
+- 字号：主要数据 14-16px，次要数据 12-13px
+
+**可读性保障**：
+- 对比度至少 4.5:1 (WCAG AA标准)
+- 等宽字体用于数字和代码
+- 充足的行间距防止信息混淆
+- 视觉分组：使用边框、背景色区分不同数据块
+
+#### 3. 实时数据更新反馈
+
+**数据变化可见性**：
+```typescript
+// 价格变化闪烁效果
+- 上涨：短暂绿色高亮 (200ms)
+- 下跌：短暂红色高亮 (200ms)
+- 使用 transition-colors duration-200
+```
+
+**加载状态**：
+- 骨架屏（Skeleton）优于转圈 Spinner
+- 局部刷新优于全屏刷新
+- 保持上次数据可见（Stale-While-Revalidate）
+
+**错误处理**：
+- Toast通知（右上角，3秒自动消失）
+- 内联错误提示（API失败时）
+- 降级显示（显示缓存数据 + "数据可能过期"提示）
+
+#### 4. 交互效率优化
+
+**键盘快捷键支持**（可选，但专业）：
+- `1-4`: 切换主页标签页
+- `L`: 跳转到 Leaderboard
+- `M`: 打开模型选择器
+- `Esc`: 关闭弹窗
+
+**点击目标区域**：
+- 按钮最小 44x44px (移动端)
+- 表格行整行可点击（cursor-pointer）
+- 避免过小的点击区域
+
+**Hover 状态**：
+- 表格行 hover: 背景色变化 (`hover:bg-gray-800/50`)
+- 按钮 hover: 颜色加深 + 轻微缩放 (`hover:scale-105`)
+- 卡片 hover: 边框高亮或阴影加深
+
+### 关键组件交互设计
+
+#### 价格滚动条 (Ticker)
+```
+位置：页面顶部，固定或吸顶
+高度：32-40px
+交互：
+  - 自动无限循环滚动（CSS animation）
+  - Hover 暂停滚动
+  - 点击币种：高亮该币种的相关持仓
+更新：每2秒刷新一次，数字变化时闪烁
+```
+
+#### 图表控件布局
+```
+┌─────────────────────────────────────────────┐
+│ [Loading...]           [ALL] [72H]  [$] [%] │ ← 控件右上角
+│                                             │
+│         图表主体区域                          │
+│                                             │
+│                                             │
+└─────────────────────────────────────────────┘
+```
+
+**交互逻辑**：
+- 时间范围按钮：互斥选择，选中态明显
+- 格式切换按钮：Toggle状态，图标+文字
+- 图例：点击显示/隐藏对应模型的线
+
+#### 持仓表格设计
+
+**列宽分配**（基于重要性）：
+```
+SIDE      COIN    LEVERAGE  NOTIONAL   EXIT PLAN  UNREAL P&L
+8%        12%     10%       15%        20%        15%
+└─关键     └─标的   └─风险    └─规模      └─策略      └─结果（最重要）
+```
+
+**排序功能**：
+- 默认按 UNREAL P&L 降序
+- 列标题点击切换升序/降序
+- 当前排序列显示箭头图标 ↑↓
+
+**分组显示**：
+- 按模型分组，折叠/展开功能
+- 组头显示：模型名称 + 总盈亏 + 持仓数量
+- 组内持仓按盈亏排序
+
+#### Exit Plan 弹窗设计
+
+**触发方式**：
+- 点击表格中的 "VIEW" 按钮
+- Hover 表格行时显示眼睛图标
+
+**弹窗布局**（Modal）：
+```
+┌─ Exit Plan: XRP Long 8x ──────────────┐
+│                                     [×]│
+│  [TARGET] Profit Target                │
+│     $2.6485  (+15.0% from entry)       │
+│                                        │
+│  [STOP] Stop Loss                      │
+│     $2.1877  (-5.0% from entry)        │
+│                                        │
+│  [WARN] Invalidation Condition         │
+│     BTC breaks below 105,000,          │
+│     confirming deeper market correction│
+│                                        │
+│  [INFO] Risk/Reward Ratio: 3.0         │
+│                                        │
+│                      [UNDERSTOOD]      │
+└────────────────────────────────────────┘
+```
+
+**视觉设计**：
+- 半透明背景遮罩（backdrop-blur）
+- 弹窗居中，最大宽度 500px
+- 图标增强可读性
+- 颜色编码：绿色（目标）、红色（止损）、黄色（失效）
+
+#### 排行榜表格设计
+
+**排名视觉化**：
+```
+RANK  MODEL              RETURN %    P&L
+ #1   DeepSeek V3.1     +7.41%      $740.99  ━━━━━━━
+ #2   Qwen3 Max         +3.75%      $375.09  ━━━
+ #3   Grok 4            -3.19%      -$319.07 ▄▄▄
+```
+
+- 前三名使用特殊标记或高亮背景色
+- 盈亏柱状图内嵌在表格中（类似 GitHub Insights）
+- 排序列高亮显示
+
+**Advanced Analytics 标签页**：
+- 使用更小字号（12px）容纳更多列
+- 可横向滚动
+- 固定首列（模型名称）
+- Tooltip 显示指标说明
+
+### 布局设计要点
+
+#### 主页 60/40 分割布局
+
+**设计理由**：
+- **左侧60%（图表区）**：趋势和全局视图，用于宏观判断
+- **右侧40%（标签页）**：详细数据和操作，用于微观决策
+- 符合人眼从左到右、从整体到细节的扫描习惯
+
+**响应式断点**：
+- Desktop (≥1280px): 60/40 分割
+- Tablet (768-1279px): 上下堆叠，图表在上
+- Mobile (<768px): 单列布局，图表优先
+
+#### 标签页导航设计
+
+**位置**：内容区域顶部
+**样式**：
+```
+┌─────────────────────────────────────────┐
+│ [COMPLETED TRADES] MODELCHAT POSITIONS  │ ← 激活态加粗+下划线
+│ ─────────────────                       │
+│                                         │
+│      标签页内容                          │
+```
+
+**交互**：
+- 点击切换内容（无页面跳转）
+- 激活态视觉反馈：颜色、粗细、下划线
+- 支持键盘导航（Tab键）
+
+### 状态反馈系统
+
+#### Empty States
+```
+┌─────────────────────────────────────────┐
+│                                         │
+│         No Active Positions             │
+│                                         │
+│   All models are currently in cash.     │
+│   New positions will appear here when   │
+│   AI models enter the market.           │
+└─────────────────────────────────────────┘
+```
+
+#### Loading States
+```
+┌─────────────────────────────────────────┐
+│  Loading positions...                   │
+│                                         │
+│  [Skeleton rows showing expected layout]│
+└─────────────────────────────────────────┘
+```
+
+#### Error States
+```
+┌─────────────────────────────────────────┐
+│                                         │
+│      Failed to Load Positions           │
+│                                         │
+│   [RETRY]          [USE CACHED DATA]    │
+└─────────────────────────────────────────┘
+```
+
+### 动画与过渡
+
+**原则：微妙而有意义**
+
+```typescript
+// 数据更新动画
+- 价格变化：Flash effect (200ms)
+- 新持仓出现：Slide in from left (300ms)
+- 持仓关闭：Fade out (200ms)
+
+// 交互反馈
+- 按钮点击：Scale down (100ms)
+- 弹窗打开：Fade + Scale (250ms, ease-out)
+- 标签页切换：Fade (150ms)
+
+// 避免
+- 过长的动画 (>500ms)
+- 复杂的 3D 变换
+- 分散注意力的循环动画
+```
+
+### 性能优化设计
+
+**虚拟滚动**（数据量>100行）：
+- 使用 `react-window` 或 `react-virtuoso`
+- 只渲染可见区域的表格行
+
+**图表性能**：
+- 数据点>1000时进行采样
+- 使用 Canvas 而非 SVG（Recharts 默认）
+- 防抖图表交互（debounce 100ms）
+
+**图片优化**：
+- 模型 Logo 使用 WebP 格式
+- Next.js Image 组件自动优化
+- Lazy loading 非首屏图片
+
 ## 核心页面结构
 
 ### 1. 主页 (`/`)
@@ -333,7 +610,7 @@ HIGHEST: QWEN3 MAX $11,340.35 +13.40%  LOWEST: GPT 5 $3,392.73 -66.07%
 ```
 ┌─ FILTER: ALL MODELS ▼ ──────────────────────────┐
 │                                                  │
-│ 🤖 CLAUDE SONNET 4.5    TOTAL UNREALIZED P&L: $359.99 │
+│ CLAUDE SONNET 4.5    TOTAL UNREALIZED P&L: $359.99 │
 │                                                  │
 │ ┌─────────────────────────────────────────────┐ │
 │ │ SIDE │ COIN │ LEVERAGE │ NOTIONAL │ EXIT PLAN │ UNREAL P&L │
@@ -356,23 +633,23 @@ HIGHEST: QWEN3 MAX $11,340.35 +13.40%  LOWEST: GPT 5 $3,392.73 -66.07%
 ```
 ┌─ MODEL: CLAUDE SONNET 4.5 ▼ ────────────────────┐
 │                                                  │
-│ 💬 Agent Chat Log                                │
+│ Agent Chat Log                                   │
 │ ┌──────────────────────────────────────────────┐ │
 │ │ [System] 08:15:23                            │ │
 │ │ You are a crypto trading AI...               │ │
 │ │                                              │ │
 │ │ [Assistant] 08:15:45                         │ │
-│ │ 📊 Analyzing market conditions...            │ │
+│ │ Analyzing market conditions...               │ │
 │ │ - BTC showing bullish momentum               │ │
 │ │ - XRP breakout above resistance              │ │
-│ │ 💡 Decision: LONG XRP 8x leverage            │ │
+│ │ Decision: LONG XRP 8x leverage               │ │
 │ │ Reasoning: Technical breakout + volume       │ │
 │ │                                              │ │
 │ │ [User] 08:16:00                              │ │
 │ │ Current positions status?                    │ │
 │ └──────────────────────────────────────────────┘ │
 │                                                  │
-│ 📝 Prompt Template                               │
+│ Prompt Template                                  │
 │ ┌──────────────────────────────────────────────┐ │
 │ │ System Prompt:                               │ │
 │ │ You are an expert crypto trader...          │ │
@@ -401,7 +678,7 @@ HIGHEST: QWEN3 MAX $11,340.35 +13.40%  LOWEST: GPT 5 $3,392.73 -66.07%
 │ │ 3  │ GROK 4       │ $9,824 │  -1.76% │ -$176  │ │
 │ └────┴──────────────┴────────┴─────────┴────────┘ │
 │                                                  │
-│ 🏆 WINNING MODEL: QWEN3 MAX                      │
+│ WINNING MODEL: QWEN3 MAX                         │
 │ TOTAL EQUITY: $11,586                            │
 │ ACTIVE POSITIONS: ETH, BTC                       │
 └──────────────────────────────────────────────────┘
@@ -698,7 +975,7 @@ export function usePositions() {
 - [ ] 创建基础布局组件
 - [ ] 实现响应式导航栏
 
-### Phase 2: API 集成层（1 天）✨ **大幅简化**
+### Phase 2: API 集成层（1 天）大幅简化
 - [ ] 设置 SWR 配置
 - [ ] 创建 API 客户端 (`lib/api/client.ts`)
 - [ ] 实现所有 API hooks（7 个 hook）
@@ -761,7 +1038,7 @@ export function usePositions() {
 - [ ] Vercel 部署
 - [ ] README 文档
 
-**总计：10-12 天** ✨ **相比 mock 方案节省 2-3 天**
+**总计：10-12 天** 相比 mock 方案节省 2-3 天
 
 ## 关键技术实现
 
@@ -857,9 +1134,9 @@ Sans: 'Inter', 'Helvetica Neue', sans-serif
 
 本方案提供了 nof0 MVP 的完整实现路径，专注于展示 AI 交易代理的核心功能。
 
-### 🎯 核心优势
+### 核心优势
 
-1. **真实数据驱动** ✨
+1. **真实数据驱动**
    - 直接使用 nof1.ai 的公开 REST API
    - 无需创建和维护 mock 数据
    - 实时同步真实的 AI 交易数据

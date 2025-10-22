@@ -4,7 +4,7 @@
 
 通过浏览器网络分析，我们发现 nof1.ai 提供了完整的公开 REST API，可以直接用于前端开发，无需创建 mock 数据！
 
-## 📡 API 端点列表
+## API 端点列表
 
 ### Base URL
 ```
@@ -143,7 +143,7 @@ https://nof1.ai/api
 - `long_short_trades_ratio`: 多空交易比率
 - `win_rate`: 胜率（百分比）
 
-## 🤖 AI 模型列表
+## AI 模型列表
 
 从 API 数据中识别出的模型 ID：
 - `gpt-5`
@@ -154,7 +154,7 @@ https://nof1.ai/api
 - `qwen3-max`
 - `buynhold_btc` (BTC 买入持有基准)
 
-## 💡 实现建议
+## 实现建议
 
 ### 使用 SWR 进行数据获取
 
@@ -215,7 +215,7 @@ export function usePositions() {
 }
 ```
 
-## 📊 数据特点
+## 数据特点
 
 ### Exit Plan 结构
 每个持仓都包含详细的退出计划：
@@ -240,7 +240,7 @@ interface ExitPlan {
 const side = position.quantity > 0 ? 'LONG' : 'SHORT';
 ```
 
-## 🎯 MVP 开发优势
+## MVP 开发优势
 
 1. **真实数据**: 直接使用真实的 AI 交易数据，无需造假
 2. **节省时间**: 省去创建 mock 数据的 2-3 天工作
@@ -248,14 +248,14 @@ const side = position.quantity > 0 ? 'LONG' : 'SHORT';
 4. **易于测试**: 可以观察真实 AI 模型的表现
 5. **生产就绪**: 开发即生产，无需后续迁移
 
-## 📝 注意事项
+## 注意事项
 
 1. **API 稳定性**: 这是公开 API，nof1.ai 可能随时修改
 2. **速率限制**: 未发现明确的速率限制，建议合理控制请求频率
 3. **数据一致性**: 不同端点的数据可能存在时间差
 4. **模型名称**: API 返回的模型 ID 与显示名称需要映射
 
-## 🔗 相关资源
+## 相关资源
 
 - [nof1.ai 官网](https://nof1.ai)
 - [PLAN.md - 完整实现方案](./PLAN.md)
