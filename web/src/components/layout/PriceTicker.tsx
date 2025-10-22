@@ -13,8 +13,8 @@ export default function PriceTicker() {
   }, [prices]);
 
   return (
-    <div className="w-full border-b border-white/10 bg-zinc-950">
-      <div className="flex flex-wrap gap-x-6 gap-y-1 px-3 py-1.5 text-[11px] leading-5 text-zinc-200">
+    <div className="w-full border-b border-white/10 bg-zinc-950 h-[var(--ticker-h)]">
+      <div className="flex h-full items-center gap-x-6 gap-y-1 px-3 text-[11px] leading-5 text-zinc-200">
         {list.map((p) => (
           <span key={p.symbol} className="tabular-nums text-zinc-300">
             <b className="mr-1 text-zinc-100">{p.symbol}</b>

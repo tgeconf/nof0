@@ -11,6 +11,7 @@ export const endpoints = {
     local(`/account-totals${lastHourlyMarker != null ? `?lastHourlyMarker=${lastHourlyMarker}` : ""}`),
   sinceInceptionValues: () => local("/since-inception-values"),
   leaderboard: () => local("/leaderboard"),
+  analytics: () => local("/analytics"),
 };
 
 export { fetcher };

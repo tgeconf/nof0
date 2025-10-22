@@ -2,6 +2,7 @@
 import { useState, useMemo } from "react";
 import { useLeaderboard, LeaderboardRow } from "@/lib/api/hooks/useLeaderboard";
 import { getModelName } from "@/lib/model/meta";
+import Link from "next/link";
 import { fmtUSD, pnlClass } from "@/lib/utils/formatters";
 import ErrorBanner from "@/components/ui/ErrorBanner";
 import { SkeletonRow } from "@/components/ui/Skeleton";
@@ -54,7 +55,7 @@ export default function LeaderboardTable() {
               data.map((r: LeaderboardRow, idx: number) => (
                 <tr key={r.id} className={clsx("border-b border-white/5", idx === 0 && "bg-white/5")}> 
                   <td className="py-1.5 pr-3">{idx + 1}</td>
-                  <td className="py-1.5 pr-3">{getModelName(r.id)}</td>
+                  <td className="py-1.5 pr-3"><Link className="hover:underline" href={`/models/${encodeURIComponent(r.id)}`}>{getModelName(r.id)}</Link></td>
                   <td className="py-1.5 pr-3 tabular-nums">{fmtUSD(r.equity)}</td>
                   <td className={clsx("py-1.5 pr-3 tabular-nums", pnlClass(r.return_pct))}>{r.return_pct != null ? `${r.return_pct.toFixed(2)}%` : "—"}</td>
                   <td className="py-1.5 pr-3 tabular-nums">{r.num_trades ?? "—"}</td>
@@ -88,4 +89,3 @@ function ThSort({ label, active, dir, onClick }: { label: string; active: boolea
     </th>
   );
 }
-

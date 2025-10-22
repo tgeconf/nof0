@@ -6,15 +6,23 @@ import ExitPlanModal from "@/components/positions/ExitPlanModal";
 import clsx from "clsx";
 import ErrorBanner from "@/components/ui/ErrorBanner";
 import { SkeletonRow } from "@/components/ui/Skeleton";
+import { useAccountTotals } from "@/lib/api/hooks/useAccountTotals";
+import PositionsFilter from "@/components/positions/PositionsFilter";
+import { useSearchParams } from "next/navigation";
 
 type SortKey = "symbol" | "leverage" | "entry_price" | "current_price" | "unrealized_pnl" | "side";
 
 export function PositionsPanel() {
   const { positionsByModel, isLoading, isError } = usePositions();
+  const { data: totalsData } = useAccountTotals();
   const [modalOpen, setModalOpen] = useState(false);
   const [modalCtx, setModalCtx] = useState<{ modelId: string; symbol: string; } | null>(null);
   const [sortKey, setSortKey] = useState<SortKey>("unrealized_pnl");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
+  const search = useSearchParams();
+  const qModel = (search.get("model") || "ALL").toLowerCase();
+  const qSymbol = (search.get("symbol") || "ALL").toUpperCase();
+  const qSide = (search.get("side") || "ALL").toUpperCase();
 
   if (isLoading)
     return (
@@ -37,9 +45,15 @@ export function PositionsPanel() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-3">
       <ErrorBanner message={isError ? "上游持仓接口暂时不可用，请稍后重试。" : undefined} />
-      {positionsByModel.map((m) => {
+      <PositionsFilter
+        models={positionsByModel.map((m) => m.id)}
+        symbols={Array.from(new Set(positionsByModel.flatMap((m) => Object.keys(m.positions || {}))))}
+      />
+      {positionsByModel
+        .filter((m) => (qModel === "all" ? true : m.id.toLowerCase() === qModel))
+        .map((m) => {
         const positionsRaw = Object.values(m.positions || {});
         type PositionWithSide = typeof positionsRaw[number] & { side: "LONG" | "SHORT" };
         const positions = (() => {
@@ -58,16 +72,45 @@ export function PositionsPanel() {
             return (Number(av) - Number(bv)) * dir;
           });
         })();
-        const totalUnreal = positions.reduce((acc, p) => acc + (p.unrealized_pnl || 0), 0);
+        const filtered = positions
+          .filter((p: any) => (qSymbol === "ALL" ? true : p.symbol?.toUpperCase() === qSymbol))
+          .filter((p: any) => (qSide === "ALL" ? true : (p.quantity > 0 ? "LONG" : "SHORT") === qSide));
+        const totalUnreal = filtered.reduce((acc, p) => acc + (p.unrealized_pnl || 0), 0);
+        const sumMargin = filtered.reduce((acc, p) => acc + (p.margin || 0), 0);
+        const sumRisk = filtered.reduce((acc, p) => acc + (p.risk_usd || 0), 0);
+        const avgConf = filtered.length ? filtered.reduce((a, p) => a + (p.confidence || 0), 0) / filtered.length : 0;
+
+        // Extract latest totals snapshot for this model
+        let equity: number | undefined;
+        let realizedPnL: number | undefined;
+        const list: any[] = (totalsData && (totalsData as any).accountTotals) ? (totalsData as any).accountTotals : [];
+        for (let i = list.length - 1; i >= 0; i--) {
+          const row = list[i];
+          if (row?.model_id === m.id) {
+            equity = row.dollar_equity ?? row.equity ?? row.account_value;
+            realizedPnL = row.realized_pnl;
+            break;
+          }
+        }
+        const availableCash = equity != null ? equity - sumMargin : undefined;
         return (
           <div key={m.id} className="rounded-md border border-white/10 bg-zinc-950 p-4">
             <div className="mb-3 flex items-center justify-between">
               <div className="text-sm font-semibold text-purple-300">{m.id}</div>
-              <div className="text-xs text-zinc-400">未实现盈亏合计：<span className={totalUnreal >= 0 ? "text-green-400" : "text-red-400"}>{fmtUSD(totalUnreal)}</span></div>
+              <div className="text-[11px] text-zinc-400">
+                未实现盈亏合计：<span className={totalUnreal >= 0 ? "text-green-400" : "text-red-400"}>{fmtUSD(totalUnreal)}</span>
+              </div>
+            </div>
+            <div className="mb-2 grid grid-cols-2 gap-x-4 gap-y-1 text-[11px] text-zinc-300">
+              <div>净值：<span className="tabular-nums">{fmtUSD(equity)}</span></div>
+              <div>已实现盈亏：<span className="tabular-nums">{fmtUSD(realizedPnL)}</span></div>
+              <div>可用现金≈<span className="tabular-nums">{fmtUSD(availableCash)}</span></div>
+              <div>风险金额合计：<span className="tabular-nums">{fmtUSD(sumRisk)}</span></div>
+              <div>平均置信度：<span className="tabular-nums">{(avgConf ? (avgConf * 100).toFixed(1) + '%' : '—')}</span></div>
             </div>
             <div className="overflow-x-auto">
               <table className="w-full text-left text-[11px]">
-                <thead className="sticky top-[42px] z-10 bg-zinc-950 text-zinc-400">
+                <thead className="sticky top-0 z-10 bg-zinc-950 text-zinc-400">
                   <tr className="border-b border-white/10">
                     {[
                       { k: "side", label: "方向" },
@@ -94,7 +137,7 @@ export function PositionsPanel() {
                   </tr>
                 </thead>
                 <tbody>
-                  {positions.map((p, i) => {
+                  {filtered.map((p, i) => {
                     const side = p.quantity > 0 ? "LONG" : "SHORT";
                     return (
                       <tr key={i} className="border-b border-white/5">

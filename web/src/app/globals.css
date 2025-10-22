@@ -3,6 +3,8 @@
 :root {
   --background: #ffffff;
   --foreground: #171717;
+  --header-h: 40px;
+  --ticker-h: 28px;
 }
 
 @theme inline {
@@ -27,6 +29,8 @@ body {
   -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility;
 }
+
+html, body { height: 100%; overflow: hidden; }
 
 /* Tabular numbers for data-heavy UI */
 .tabular-nums {
