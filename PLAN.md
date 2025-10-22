@@ -614,6 +614,8 @@ export const nof1API = {
   getAccountTotals: (lastHourlyMarker?: number) =>
     fetcher(`/account-totals${lastHourlyMarker ? `?lastHourlyMarker=${lastHourlyMarker}` : ''}`),
   getSinceInceptionValues: () => fetcher('/since-inception-values'),
+  getLeaderboard: () => fetcher('/leaderboard'),
+  getAnalytics: () => fetcher('/analytics'),
 };
 ```
 
@@ -699,7 +701,10 @@ export function usePositions() {
 ### Phase 2: API 集成层（1 天）✨ **大幅简化**
 - [ ] 设置 SWR 配置
 - [ ] 创建 API 客户端 (`lib/api/client.ts`)
-- [ ] 实现所有 API hooks（5 个 hook）
+- [ ] 实现所有 API hooks（7 个 hook）
+  - useCryptoPrices, usePositions, useTrades
+  - useAccountTotals, useSinceInception
+  - useLeaderboard, useAnalytics
 - [ ] 创建数据转换函数
 - [ ] 设置错误处理和重试逻辑
 
