@@ -12,6 +12,7 @@ export const endpoints = {
   sinceInceptionValues: () => local("/since-inception-values"),
   leaderboard: () => local("/leaderboard"),
   analytics: () => local("/analytics"),
+  conversations: () => local("/conversations"),
 };
 
 export { fetcher };
