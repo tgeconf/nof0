@@ -163,12 +163,72 @@ GET /api/since-inception-values
 }
 ```
 
+#### 6. 排行榜数据 `/leaderboard`
+获取所有模型的排行榜统计数据。
+
+**请求**:
+```http
+GET /api/leaderboard
+```
+
+**响应示例**:
+```json
+{
+  "leaderboard": [
+    {
+      "id": "deepseek-chat-v3.1",
+      "num_trades": 8,
+      "win_dollars": 1489.52,
+      "num_losses": 7,
+      "num_wins": 1,
+      "sharpe": 1.268,
+      "lose_dollars": -1065.65,
+      "return_pct": 7.41,
+      "equity": 10741.0
+    }
+  ]
+}
+```
+
+**关键字段**:
+- `num_trades`: 交易总数
+- `sharpe`: 夏普比率
+- `return_pct`: 收益率百分比
+- `equity`: 当前账户价值
+- `win_rate`: 胜率（通过 num_wins / num_trades 计算）
+
+#### 7. 高级分析数据 `/analytics`
+获取每个模型的详细分析指标和统计数据（用于 LEADERBOARD 页面的 ADVANCED ANALYTICS 标签页）。
+
+**请求**:
+```http
+GET /api/analytics
+```
+
+**响应包含的分析表**:
+- `overall_trades_overview_table`: 整体交易概览（平均持仓时间、交易规模等）
+- `longs_shorts_breakdown_table`: 多空仓位分析
+- `winners_losers_breakdown_table`: 盈利和亏损交易分析
+- `signals_breakdown_table`: 信号统计（做多/做空/持有）
+- `fee_pnl_moves_breakdown_table`: 费用和盈亏分解
+- `invocation_breakdown_table`: 调用频率统计
+
+**关键字段**:
+- `avg_holding_period_mins` / `median_holding_period_mins`: 持仓时间
+- `avg_size_of_trade_notional` / `median_size_of_trade_notional`: 交易规模
+- `avg_convo_leverage` / `median_convo_leverage`: 杠杆倍数
+- `avg_confidence` / `median_confidence`: 置信度
+- `long_short_trades_ratio`: 多空交易比率
+- `win_rate`: 胜率
+
 ### API 使用建议
 
 1. **轮询频率**
    - 价格数据: 每 2-5 秒更新一次
    - 持仓数据: 每 5-10 秒更新一次
    - 交易历史: 每 10-30 秒更新一次
+   - 排行榜数据: 每 30 秒更新一次
+   - 分析数据: 每 60 秒更新一次（数据量大，刷新频率可适当降低）
 
 2. **数据缓存**
    - 使用 SWR 或 React Query 进行数据缓存
@@ -496,7 +556,9 @@ lib/
 │       ├── usePositions.ts       # 持仓数据 hook
 │       ├── useTrades.ts          # 交易历史 hook
 │       ├── useAccountTotals.ts   # 账户总值 hook
-│       └── useSinceInception.ts  # 历史数据 hook
+│       ├── useSinceInception.ts  # 历史数据 hook
+│       ├── useLeaderboard.ts     # 排行榜数据 hook
+│       └── useAnalytics.ts       # 高级分析数据 hook
 └── utils/
     ├── formatters.ts         # 数字/日期格式化
     ├── calculations.ts       # P&L 计算等
