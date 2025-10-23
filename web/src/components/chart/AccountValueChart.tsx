@@ -38,6 +38,14 @@ export default function AccountValueChart() {
   const isDark = resolvedTheme === 'dark';
   const chartRef = useRef<HTMLDivElement | null>(null);
 
+  // End-logo size and dynamic right margin (to avoid clipping without huge whitespace)
+  // Rendered size = base * 2/3. Targets: ~14px (<380), ~18px (<640), ~28px (<1024)
+  const endLogoBaseSize = vw < 380 ? 21 : vw < 640 ? 27 : vw < 1024 ? 42 : 44; // logical size used before scaling
+  const endLogoSize = Math.round(endLogoBaseSize * 2 / 3); // actual rendered logo size
+  // Responsive margin factor: tighter on very small screens since logo is smaller
+  const marginFactor = vw < 380 ? 1.2 : vw < 640 ? 1.35 : vw < 1024 ? 1.6 : 1.7;
+  const chartRightMargin = Math.max(64, Math.round(endLogoSize * marginFactor));
+
   const cssSafe = (s: string) => s.toLowerCase().replace(/[^a-z0-9_-]+/g, "-");
 
   const clearFocus = () => {
@@ -244,9 +252,8 @@ export default function AccountValueChart() {
     const color = getModelColor(id);
     const bg = color || "var(--chart-logo-bg)";
     const ring = typeof bg === "string" && bg.startsWith("#") ? adjustLuminance(bg, -0.15) : "var(--chart-logo-ring)";
-    const baseSize = vw < 640 ? 60 : vw < 1024 ? 52 : 44; // previous large size
-    const size = Math.round(baseSize * 2 / 3); // logo size to 2/3
-    const haloR = Math.round(baseSize / 3); // halo to 1/3 of previous radius
+    const size = endLogoSize; // logo size to 2/3
+    const haloR = Math.round(endLogoBaseSize / 3); // halo to 1/3 of previous radius
     return (
       <g
         key={`${id}-dot-${index}`}
@@ -299,7 +306,7 @@ export default function AccountValueChart() {
   const inactBtn = isDark ? "text-zinc-300 hover:bg-white/5" : "text-zinc-600 hover:bg-black/5";
 
   return (
-    <div className={`flex h-full flex-col rounded-md border ${panelBorder} ${panelBg} p-3`}>
+    <div className={`flex h-full min-h-[260px] sm:min-h-[300px] flex-col rounded-md border ${panelBorder} ${panelBg} p-3`}>
       <div className="mb-2 flex items-center justify-between">
         <div className={`text-xs font-semibold tracking-wider ${mutText}`}>账户总资产</div>
         {/* Small top-right range/unit toggles */}
@@ -348,7 +355,7 @@ export default function AccountValueChart() {
             <ResponsiveContainer>
               <LineChart
                 data={data}
-                margin={{ top: 8, right: 170, bottom: 8, left: 0 }}
+                margin={{ top: 8, right: chartRightMargin, bottom: 8, left: 0 }}
                 onMouseLeave={() => clearFocus()}
               >
               <CartesianGrid stroke={gridStroke} strokeDasharray="3 3" />
@@ -387,10 +394,13 @@ export default function AccountValueChart() {
               ))}
             </LineChart>
             </ResponsiveContainer>
-            {/* Watermark (bottom-right, small) */}
-            <div className="pointer-events-none absolute right-2 bottom-2 select-none">
+            {/* Watermark near x-axis end (slightly above) */}
+            <div
+              className="pointer-events-none absolute select-none"
+              style={{ right: Math.max(8, chartRightMargin - 12), bottom: 40 }}
+            >
               <div
-                className="font-semibold tracking-wider text-[10px] sm:text-xs md:text-sm"
+                className="font-semibold tracking-wider text-base sm:text-lg md:text-xl lg:text-2xl"
                 style={{
                   color: 'var(--watermark-color)',
                   letterSpacing: '0.15em',
@@ -405,43 +415,86 @@ export default function AccountValueChart() {
           {/* Bottom legend inside chart area flow */}
           {models.length > 0 && (
             <div className="mt-3">
-              {/* Single-row adaptive legend: equal-width buttons, stacked content */}
-              <div className="grid gap-2" style={{ gridTemplateColumns: `repeat(${models.length}, minmax(0, 1fr))` }}>
-                {models.map((id) => {
-                  const activeOn = active.size ? active.has(id) : true;
-                  const icon = getModelIcon(id);
-                  return (
-                    <button
-                      key={id}
-                      className={`w-full group inline-flex flex-col items-center justify-center gap-1 rounded border px-2.5 py-2 text-[12px] sm:text-[13px] transition-colors ${
-                        activeOn
-                          ? (isDark ? "border-white/25 bg-white/5 text-zinc-100 hover:bg-white/10" : "border-black/20 bg-black/5 text-zinc-800 hover:bg-black/10")
-                          : (isDark ? "border-white/10 text-zinc-400 hover:bg-white/5" : "border-black/10 text-zinc-500 hover:bg-black/5")
-                      }`}
-                      onClick={() => {
-                        setActive((prev) => {
-                          if (prev.size === 1 && prev.has(id)) return new Set(models);
-                          return new Set([id]);
-                        });
-                      }}
-                    >
-                      <div className="flex items-center gap-1 text-[11px] opacity-90">
-                        {icon ? (
-                          <span className="logo-chip logo-chip-sm" style={{ background: getModelColor(id), borderColor: adjustLuminance(getModelColor(id), -0.2) }}>
-                            {/* eslint-disable-next-line @next/next/no-img-element */}
-                            <img src={icon} alt="" className="h-3 w-3 object-contain" />
-                          </span>
-                        ) : (
-                          <span className="inline-block h-3 w-3 rounded-full" style={{ background: getModelColor(id) }} />
-                        )}
-                        <span className="truncate max-w-[9ch] sm:max-w-none">{getModelName(id)}</span>
-                      </div>
-                      <div className={`font-semibold leading-tight ${isDark ? "text-zinc-100" : "text-zinc-800"}`}>
-                        {formatValue(lastValById[id])}
-                      </div>
-                    </button>
-                  );
-                })}
+              {/* Small screens: horizontal scrollable legend */}
+              <div className="block md:hidden">
+                <div className="flex flex-nowrap gap-2 overflow-x-auto whitespace-nowrap pr-1" style={{ WebkitOverflowScrolling: 'touch' }}>
+                  {models.map((id) => {
+                    const activeOn = active.size ? active.has(id) : true;
+                    const icon = getModelIcon(id);
+                    return (
+                      <button
+                        key={id}
+                        className={`inline-flex min-w-[120px] flex-shrink-0 flex-col items-center justify-center gap-1 rounded border px-2.5 py-2 text-[12px] transition-colors ${
+                          activeOn
+                            ? (isDark ? "border-white/25 bg-white/5 text-zinc-100 hover:bg-white/10" : "border-black/20 bg-black/5 text-zinc-800 hover:bg-black/10")
+                            : (isDark ? "border-white/10 text-zinc-400 hover:bg-white/5" : "border-black/10 text-zinc-500 hover:bg-black/5")
+                        }`}
+                        onClick={() => {
+                          setActive((prev) => {
+                            if (prev.size === 1 && prev.has(id)) return new Set(models);
+                            return new Set([id]);
+                          });
+                        }}
+                      >
+                        <div className="flex items-center gap-1 text-[11px] opacity-90">
+                          {icon ? (
+                            <span className="logo-chip logo-chip-sm" style={{ background: getModelColor(id), borderColor: adjustLuminance(getModelColor(id), -0.2) }}>
+                              {/* eslint-disable-next-line @next/next/no-img-element */}
+                              <img src={icon} alt="" className="h-3 w-3 object-contain" />
+                            </span>
+                          ) : (
+                            <span className="inline-block h-3 w-3 rounded-full" style={{ background: getModelColor(id) }} />
+                          )}
+                          <span className="truncate max-w-[9ch]">{getModelName(id)}</span>
+                        </div>
+                        <div className={`font-semibold leading-tight ${isDark ? "text-zinc-100" : "text-zinc-800"}`}>
+                          {formatValue(lastValById[id])}
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Desktop: equal-width grid legend */}
+              <div className="hidden md:block">
+                <div className="grid gap-2" style={{ gridTemplateColumns: `repeat(${models.length}, minmax(0, 1fr))` }}>
+                  {models.map((id) => {
+                    const activeOn = active.size ? active.has(id) : true;
+                    const icon = getModelIcon(id);
+                    return (
+                      <button
+                        key={id}
+                        className={`w-full group inline-flex flex-col items-center justify-center gap-1 rounded border px-2.5 py-2 text-[12px] sm:text-[13px] transition-colors ${
+                          activeOn
+                            ? (isDark ? "border-white/25 bg-white/5 text-zinc-100 hover:bg-white/10" : "border-black/20 bg-black/5 text-zinc-800 hover:bg-black/10")
+                            : (isDark ? "border-white/10 text-zinc-400 hover:bg-white/5" : "border-black/10 text-zinc-500 hover:bg-black/5")
+                        }`}
+                        onClick={() => {
+                          setActive((prev) => {
+                            if (prev.size === 1 && prev.has(id)) return new Set(models);
+                            return new Set([id]);
+                          });
+                        }}
+                      >
+                        <div className="flex items-center gap-1 text-[11px] opacity-90">
+                          {icon ? (
+                            <span className="logo-chip logo-chip-sm" style={{ background: getModelColor(id), borderColor: adjustLuminance(getModelColor(id), -0.2) }}>
+                              {/* eslint-disable-next-line @next/next/no-img-element */}
+                              <img src={icon} alt="" className="h-3 w-3 object-contain" />
+                            </span>
+                          ) : (
+                            <span className="inline-block h-3 w-3 rounded-full" style={{ background: getModelColor(id) }} />
+                          )}
+                          <span className="truncate max-w-[9ch] sm:max-w-none">{getModelName(id)}</span>
+                        </div>
+                        <div className={`font-semibold leading-tight ${isDark ? "text-zinc-100" : "text-zinc-800"}`}>
+                          {formatValue(lastValById[id])}
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
               {/* Range/unit toggles moved to top-right; no bottom controls */}
             </div>
