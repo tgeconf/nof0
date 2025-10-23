@@ -9,10 +9,12 @@ import { SkeletonRow } from "@/components/ui/Skeleton";
 import { useAccountTotals } from "@/lib/api/hooks/useAccountTotals";
 import PositionsFilter from "@/components/positions/PositionsFilter";
 import { useSearchParams } from "next/navigation";
+import { useTheme } from "@/store/useTheme";
 
 type SortKey = "symbol" | "leverage" | "entry_price" | "current_price" | "unrealized_pnl" | "side";
 
 export function PositionsPanel() {
+  const isDark = useTheme((s) => s.resolved) === 'dark';
   const { positionsByModel, isLoading, isError } = usePositions();
   const { data: totalsData } = useAccountTotals();
   const [modalOpen, setModalOpen] = useState(false);
@@ -26,8 +28,8 @@ export function PositionsPanel() {
 
   if (isLoading)
     return (
-      <div className="rounded-md border border-white/10 bg-zinc-950 p-4">
-        <div className="mb-2 text-sm text-zinc-400">加载持仓中…</div>
+      <div className={`rounded-md border ${isDark?"border-white/10 bg-zinc-950":"border-black/10 bg-white"} p-4`}>
+        <div className={`mb-2 text-sm ${isDark?"text-zinc-400":"text-zinc-600"}`}>加载持仓中…</div>
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs">
             <tbody>
@@ -41,7 +43,7 @@ export function PositionsPanel() {
     );
 
   if (!positionsByModel.length) {
-    return <div className="text-sm text-zinc-400">暂无持仓。</div>;
+    return <div className={`text-sm ${isDark?"text-zinc-400":"text-zinc-600"}`}>暂无持仓。</div>;
   }
 
   return (
@@ -94,14 +96,14 @@ export function PositionsPanel() {
         }
         const availableCash = equity != null ? equity - sumMargin : undefined;
         return (
-          <div key={m.id} className="rounded-md border border-white/10 bg-zinc-950 p-4">
+          <div key={m.id} className={`rounded-md border ${isDark?"border-white/10 bg-zinc-950":"border-black/10 bg-white"} p-4`}>
             <div className="mb-3 flex items-center justify-between">
-              <div className="text-sm font-semibold text-purple-300">{m.id}</div>
-              <div className="text-[11px] text-zinc-400">
+              <div className={`text-sm font-semibold ${isDark?"text-purple-300":"text-purple-600"}`}>{m.id}</div>
+              <div className={`text-[11px] ${isDark?"text-zinc-400":"text-zinc-600"}`}>
                 未实现盈亏合计：<span className={totalUnreal >= 0 ? "text-green-400" : "text-red-400"}>{fmtUSD(totalUnreal)}</span>
               </div>
             </div>
-            <div className="mb-2 grid grid-cols-2 gap-x-4 gap-y-1 text-[11px] text-zinc-300">
+            <div className={`mb-2 grid grid-cols-2 gap-x-4 gap-y-1 text-[11px] ${isDark?"text-zinc-300":"text-zinc-700"}`}>
               <div>净值：<span className="tabular-nums">{fmtUSD(equity)}</span></div>
               <div>已实现盈亏：<span className="tabular-nums">{fmtUSD(realizedPnL)}</span></div>
               <div>可用现金≈<span className="tabular-nums">{fmtUSD(availableCash)}</span></div>
@@ -110,8 +112,8 @@ export function PositionsPanel() {
             </div>
             <div className="overflow-x-auto">
               <table className="w-full text-left text-[11px]">
-                <thead className="sticky top-0 z-10 bg-zinc-950 text-zinc-400">
-                  <tr className="border-b border-white/10">
+                <thead className={clsx("sticky top-0 z-10", isDark?"bg-zinc-950 text-zinc-400":"bg-white text-zinc-600") }>
+                  <tr className={clsx("border-b", isDark?"border-white/10":"border-black/10") }>
                     {[
                       { k: "side", label: "方向" },
                       { k: "symbol", label: "币种" },
@@ -122,7 +124,7 @@ export function PositionsPanel() {
                     ].map((c) => (
                       <th key={c.k} className="py-1.5 pr-3">
                         <button
-                          className={clsx("flex items-center gap-1 hover:text-zinc-200", sortKey === (c.k as SortKey) && "text-zinc-200")}
+                          className={clsx("flex items-center gap-1", isDark?"hover:text-zinc-200":"hover:text-zinc-700", sortKey === (c.k as SortKey) && (isDark?"text-zinc-200":"text-zinc-700"))}
                           onClick={() => {
                             if (sortKey === (c.k as SortKey)) setSortDir(sortDir === "asc" ? "desc" : "asc");
                             setSortKey(c.k as SortKey);
@@ -136,11 +138,11 @@ export function PositionsPanel() {
                     <th className="py-1.5 pr-3">退出计划</th>
                   </tr>
                 </thead>
-                <tbody>
+                <tbody className={isDark?"text-zinc-200":"text-zinc-800"}>
                   {filtered.map((p, i) => {
                     const side = p.quantity > 0 ? "LONG" : "SHORT";
                     return (
-                      <tr key={i} className="border-b border-white/5">
+                      <tr key={i} className={clsx("border-b", isDark?"border-white/5":"border-black/5", !isDark && i%2===1 && "bg-black/3") }>
                         <td className="py-1.5 pr-3">{side}</td>
                         <td className="py-1.5 pr-3">{p.symbol}</td>
                         <td className="py-1.5 pr-3">{p.leverage}x</td>
@@ -150,7 +152,7 @@ export function PositionsPanel() {
                         <td className="py-1.5 pr-3">
                           {p.exit_plan?.profit_target || p.exit_plan?.stop_loss || p.exit_plan?.invalidation_condition ? (
                             <button
-                              className="rounded border border-white/10 px-2 py-0.5 text-[11px] text-zinc-200 hover:bg-white/5"
+                              className={clsx("rounded border px-2 py-0.5 text-[11px]", isDark?"border-white/10 text-zinc-200 hover:bg-white/5":"border-black/10 text-zinc-700 hover:bg-black/5")}
                               onClick={() => {
                                 setModalCtx({ modelId: m.id, symbol: p.symbol });
                                 setModalOpen(true);

@@ -1,7 +1,9 @@
 "use client";
 import { useSearchParams, useRouter, usePathname } from "next/navigation";
+import { useTheme } from "@/store/useTheme";
 
 export default function TabButton({ name, tabKey }: { name: string; tabKey: string }) {
+  const isDark = useTheme((s) => s.resolved) === 'dark';
   const search = useSearchParams();
   const router = useRouter();
   const pathname = usePathname();
@@ -14,10 +16,9 @@ export default function TabButton({ name, tabKey }: { name: string; tabKey: stri
         if (tabKey === "positions") params.delete("tab"); else params.set("tab", tabKey);
         router.replace(`${pathname}?${params.toString()}`);
       }}
-      className={`rounded border px-2 py-1 ${active ? "border-white/20 bg-white/10 text-zinc-100" : "border-white/10 text-zinc-300 hover:bg-white/5"}`}
+      className={`rounded border px-2 py-1 ${active ? (isDark?"border-white/20 bg-white/10 text-zinc-100":"border-black/20 bg-black/10 text-zinc-800") : (isDark?"border-white/10 text-zinc-300 hover:bg-white/5":"border-black/10 text-zinc-600 hover:bg-black/5")}`}
     >
       {name}
     </button>
   );
 }
-

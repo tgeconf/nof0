@@ -1,8 +1,10 @@
 "use client";
 import { useAnalytics } from "@/lib/api/hooks/useAnalytics";
 import ErrorBanner from "@/components/ui/ErrorBanner";
+import { useTheme } from "@/store/useTheme";
 
 export default function AnalyticsPanel() {
+  const isDark = useTheme((s) => s.resolved) === 'dark';
   const { data, isLoading, isError } = useAnalytics();
   const fee = data?.fee_pnl_moves_breakdown_table || [];
   const wl = data?.winners_losers_breakdown_table || [];
@@ -27,39 +29,42 @@ export default function AnalyticsPanel() {
 }
 
 function Kpi({ label, value }: { label: string; value?: string }) {
+  const isDark = useTheme((s) => s.resolved) === 'dark';
   return (
-    <div className="rounded-md border border-white/10 bg-zinc-950 p-3">
-      <div className="text-zinc-400">{label}</div>
-      <div className="mt-1 text-sm text-zinc-100">{value ?? "—"}</div>
+    <div className={`rounded-md border p-3 ${isDark?"border-white/10 bg-zinc-950":"border-black/10 bg-white"}`}>
+      <div className={isDark?"text-zinc-400":"text-zinc-600"}>{label}</div>
+      <div className={`mt-1 text-sm ${isDark?"text-zinc-100":"text-zinc-800"}`}>{value ?? "—"}</div>
     </div>
   );
 }
 
 function Block({ title, children }: { title: string; children: React.ReactNode }) {
+  const isDark = useTheme((s) => s.resolved) === 'dark';
   return (
-    <div className="rounded-md border border-white/10">
-      <div className="border-b border-white/10 px-3 py-2 text-xs text-zinc-400">{title}</div>
+    <div className={`rounded-md border ${isDark?"border-white/10":"border-black/10"}`}>
+      <div className={`border-b px-3 py-2 text-xs ${isDark?"border-white/10 text-zinc-400":"border-black/10 text-zinc-600"}`}>{title}</div>
       <div className="p-2">{children}</div>
     </div>
   );
 }
 
 function MiniTable({ rows }: { rows: any[] }) {
+  const isDark = useTheme((s) => s.resolved) === 'dark';
   if (!rows?.length) return <div className="text-xs text-zinc-500">暂无数据</div>;
   const cols = Object.keys(rows[0] || {});
   return (
     <div className="overflow-x-auto">
       <table className="w-full text-left text-[11px]">
-        <thead className="text-zinc-400">
-          <tr className="border-b border-white/10">
+        <thead className={isDark?"text-zinc-400":"text-zinc-600"}>
+          <tr className={`border-b ${isDark?"border-white/10":"border-black/10"}`}>
             {cols.map((c) => (
               <th key={c} className="py-1.5 pr-3">{c}</th>
             ))}
           </tr>
         </thead>
-        <tbody>
+        <tbody className={isDark?"text-zinc-200":"text-zinc-800"}>
           {rows.slice(0, 20).map((r, idx) => (
-            <tr key={idx} className="border-b border-white/5">
+            <tr key={idx} className={`border-b ${isDark?"border-white/5":"border-black/5"} ${!isDark && idx%2===1?"bg-black/3":""}`}>
               {cols.map((c) => (
                 <td key={c} className="py-1.5 pr-3">{fmtAny(r[c])}</td>
               ))}

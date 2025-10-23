@@ -3,6 +3,7 @@ import { useConversations } from "@/lib/api/hooks/useConversations";
 import { useSearchParams, useRouter, usePathname } from "next/navigation";
 import { useMemo, useState } from "react";
 import { getModelName, getModelColor, getModelMeta } from "@/lib/model/meta";
+import { useTheme } from "@/store/useTheme";
 
 export default function ModelChatPanel() {
   const { items, isLoading, isError } = useConversations();
@@ -40,6 +41,7 @@ export default function ModelChatPanel() {
   if (isError) return <div className="text-xs text-red-400">模型对话接口暂不可用，请稍后重试。</div>;
   if (!list.length) return <div className="text-xs text-zinc-500">暂无模型对话。</div>;
 
+  const isDark = useTheme((s) => s.resolved) === 'dark';
   return (
     <div className="space-y-3">
       <FilterBar model={qModel} onChange={(v) => setModel(v)} models={["ALL", ...Object.keys(grouped)]} />
@@ -75,11 +77,12 @@ function fmtTime(t?: number | string) {
 }
 
 function FilterBar({ model, onChange, models }: { model: string; onChange: (v: string) => void; models: string[] }) {
+  const isDark = useTheme((s) => s.resolved) === 'dark';
   const uniq = Array.from(new Set(models));
   return (
     <div className="mb-1 flex items-center gap-2 text-[12px]">
-      <span className="font-semibold tracking-wide text-zinc-300">FILTER:</span>
-      <select className="rounded border border-white/10 bg-zinc-950 px-2 py-1 text-xs text-zinc-200" value={model} onChange={(e) => onChange(e.target.value)}>
+      <span className={`font-semibold tracking-wide ${isDark?"text-zinc-300":"text-zinc-700"}`}>FILTER:</span>
+      <select className={`rounded border px-2 py-1 text-xs ${isDark?"border-white/10 bg-zinc-950 text-zinc-200":"border-black/10 bg-white text-zinc-800"}`} value={model} onChange={(e) => onChange(e.target.value)}>
         {uniq.map((m) => (
           <option key={m} value={m}>{m}</option>
         ))}
@@ -93,32 +96,33 @@ function ChatCard({ modelId, content, timestamp, user_prompt, cot_trace, llm_res
   const color = getModelColor(modelId);
   const [open, setOpen] = useState(false);
   const [openHist, setOpenHist] = useState<Record<string, boolean>>({});
+  const isDark = useTheme((s) => s.resolved) === 'dark';
   return (
-    <div className="rounded-md border p-3" style={{ borderColor: `${color}55`, background: `linear-gradient(0deg, ${color}14, transparent)` }}>
+    <div className={`rounded-md border p-3 ${isDark?"":"bg-white"}`} style={{ borderColor: `${color}55`, background: isDark ? `linear-gradient(0deg, ${color}14, transparent)` : `linear-gradient(0deg, ${color}0F, #ffffff)` }}>
       <div className="mb-2 flex items-center justify-between">
         <div className="flex items-center gap-2">
           {getModelMeta(modelId).icon ? (
             <img src={getModelMeta(modelId).icon!} alt="" className="h-5 w-5 rounded-sm object-contain" />
           ) : null}
-          <div className="text-sm font-semibold" style={{ color }}>{getModelName(modelId)}</div>
+          <div className={`text-sm font-semibold ${isDark?"text-zinc-100":"text-zinc-800"}`} style={{ color }}>{getModelName(modelId)}</div>
         </div>
-        <div className="text-[11px] text-zinc-400">{fmtTime(timestamp)}</div>
+        <div className={`text-[11px] ${isDark?"text-zinc-400":"text-zinc-500"}`}>{fmtTime(timestamp)}</div>
       </div>
       <div className="relative">
-        <div className="whitespace-pre-wrap text-[13px] leading-6 text-zinc-100" style={{ fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace' }}>
+        <div className={`whitespace-pre-wrap text-[13px] leading-6 ${isDark?"text-zinc-100":"text-zinc-800"}`} style={{ fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace' }}>
           {content || "(no summary)"}
         </div>
-        <button className="absolute bottom-0 right-0 translate-y-5 text-[11px] italic text-zinc-400 hover:text-zinc-200" onClick={() => setOpen(!open)}>
+        <button className={`absolute bottom-0 right-0 translate-y-5 text-[11px] italic ${isDark?"text-zinc-400 hover:text-zinc-200":"text-zinc-500 hover:text-zinc-700"}`} onClick={() => setOpen(!open)}>
           {open ? "click to collapse" : "click to expand"}
         </button>
       </div>
       {open && (
         <div className="mt-3 space-y-3 text-[12px]">
           <Section title="USER_PROMPT">
-            <pre className="whitespace-pre-wrap text-zinc-200">{user_prompt || "—"}</pre>
+            <pre className={`${isDark?"text-zinc-200":"text-zinc-800"} whitespace-pre-wrap`}>{user_prompt || "—"}</pre>
           </Section>
           <Section title="CHAIN_OF_THOUGHT">
-            <pre className="whitespace-pre-wrap text-zinc-200">{formatCot(cot_trace)}</pre>
+            <pre className={`${isDark?"text-zinc-200":"text-zinc-800"} whitespace-pre-wrap`}>{formatCot(cot_trace)}</pre>
           </Section>
           <Section title="TRADING_DECISIONS">
             {renderDecisions(llm_response)}
@@ -128,16 +132,16 @@ function ChatCard({ modelId, content, timestamp, user_prompt, cot_trace, llm_res
 
       {!!history?.length && (
         <div className="mt-4">
-          <div className="mb-1 text-[11px] font-semibold text-zinc-400">历史对话</div>
+          <div className={`mb-1 text-[11px] font-semibold ${isDark?"text-zinc-400":"text-zinc-600"}`}>历史对话</div>
           <div className="space-y-2">
             {history.slice(0, 5).map((h, idx) => {
               const key = String(h.timestamp || idx);
               const isOpen = !!openHist[key];
               return (
-                <div key={key} className="rounded border border-white/10 p-2">
-                  <div className="mb-1 flex items-center justify-between text-[11px] text-zinc-400">
+                <div key={key} className={`rounded border p-2 ${isDark?"border-white/10":"border-black/10"}`}>
+                  <div className={`mb-1 flex items-center justify-between text-[11px] ${isDark?"text-zinc-400":"text-zinc-600"}`}>
                     <span>{fmtTime(h.timestamp)}</span>
-                    <button className="text-[11px] italic hover:text-zinc-200" onClick={() => setOpenHist({ ...openHist, [key]: !isOpen })}>
+                    <button className={`text-[11px] italic ${isDark?"hover:text-zinc-200":"hover:text-zinc-700"}`} onClick={() => setOpenHist({ ...openHist, [key]: !isOpen })}>
                       {isOpen ? "collapse" : "click to expand"}
                     </button>
                   </div>

@@ -5,10 +5,12 @@ import { useSearchParams, useRouter, usePathname } from "next/navigation";
 import { fmtUSD, pnlClass } from "@/lib/utils/formatters";
 import ErrorBanner from "@/components/ui/ErrorBanner";
 import { SkeletonRow } from "@/components/ui/Skeleton";
+import { useTheme } from "@/store/useTheme";
 
 type SortKey = "exit_time" | "realized_net_pnl" | "leverage";
 
 export default function TradesTable() {
+  const isDark = useTheme((s) => s.resolved) === 'dark';
   const { trades, isLoading, isError } = useTrades();
   const search = useSearchParams();
   const router = useRouter();
@@ -38,15 +40,15 @@ export default function TradesTable() {
   const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
 
   return (
-    <div className="rounded-md border border-white/10 bg-zinc-950 p-3">
+    <div className={`rounded-md border ${isDark ? "border-white/10 bg-zinc-950" : "border-black/10 bg-white"} p-3`}>
       <div className="mb-2 flex items-center justify-between">
-        <div className="text-sm font-semibold">成交记录</div>
-        <div className="flex items-center gap-2 text-[11px] text-zinc-300">
-          <button className="rounded border border-white/10 px-2 py-0.5" disabled={page <= 1} onClick={() => setPage(page - 1)}>
+        <div className={`text-sm font-semibold ${isDark ? "text-zinc-100" : "text-zinc-800"}`}>成交记录</div>
+        <div className={`flex items-center gap-2 text-[11px] ${isDark ? "text-zinc-300" : "text-zinc-600"}`}>
+          <button className={`rounded border px-2 py-0.5 ${isDark ? "border-white/10" : "border-black/10"}`} disabled={page <= 1} onClick={() => setPage(page - 1)}>
             上一页
           </button>
           <span className="tabular-nums">{page}/{totalPages}</span>
-          <button className="rounded border border-white/10 px-2 py-0.5" disabled={page >= totalPages} onClick={() => setPage(page + 1)}>
+          <button className={`rounded border px-2 py-0.5 ${isDark ? "border-white/10" : "border-black/10"}`} disabled={page >= totalPages} onClick={() => setPage(page + 1)}>
             下一页
           </button>
         </div>
@@ -54,8 +56,8 @@ export default function TradesTable() {
       <ErrorBanner message={isError ? "成交记录数据源暂时不可用，请稍后重试。" : undefined} />
       <div className="overflow-x-auto">
         <table className="w-full text-left text-[11px]">
-          <thead className="text-zinc-400">
-            <tr className="border-b border-white/10">
+          <thead className={isDark ? "text-zinc-400" : "text-zinc-600"}>
+            <tr className={`border-b ${isDark ? "border-white/10" : "border-black/10"}`}>
               <Th label="时间" k="exit_time" />
               <Th label="模型" />
               <Th label="币种" />
@@ -64,7 +66,7 @@ export default function TradesTable() {
               <Th label="净盈亏" k="realized_net_pnl" />
             </tr>
           </thead>
-          <tbody>
+          <tbody className={isDark ? "text-zinc-200" : "text-zinc-800"}>
             {isLoading ? (
               <>
                 <SkeletonRow cols={6} />
@@ -72,8 +74,8 @@ export default function TradesTable() {
                 <SkeletonRow cols={6} />
               </>
             ) : pageRows.length ? (
-              pageRows.map((t: any) => (
-                <tr key={t.id} className="border-b border-white/5">
+              pageRows.map((t: any, idx: number) => (
+                <tr key={t.id} className={`border-b ${isDark ? "border-white/5" : "border-black/5"} ${!isDark && idx % 2 === 1 ? "bg-black/3" : ""}`}>
                   <td className="py-1.5 pr-3 tabular-nums">{fmtTime(t.exit_time || t.entry_time)}</td>
                   <td className="py-1.5 pr-3">{t.model_id}</td>
                   <td className="py-1.5 pr-3">{t.symbol}</td>
@@ -83,7 +85,7 @@ export default function TradesTable() {
                 </tr>
               ))
             ) : (
-              <tr><td className="p-3 text-xs text-zinc-500" colSpan={6}>暂无数据</td></tr>
+              <tr><td className={`p-3 text-xs ${isDark ? "text-zinc-500" : "text-zinc-500"}`} colSpan={6}>暂无数据</td></tr>
             )}
           </tbody>
         </table>
@@ -101,12 +103,13 @@ export default function TradesTable() {
 function Th({ label, k }: { label: string; k?: SortKey }) {
   const [sortKey, setSortKey] = useState<SortKey | null>(null);
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
+  const isDark = useTheme((s) => s.resolved) === 'dark';
   if (!k) return <th className="py-1.5 pr-3">{label}</th>;
   const active = sortKey === k;
   return (
     <th className="py-1.5 pr-3">
       <button
-        className={`flex items-center gap-1 hover:text-zinc-200 ${active ? "text-zinc-200" : "text-zinc-400"}`}
+        className={`flex items-center gap-1 ${isDark ? "hover:text-zinc-200" : "hover:text-zinc-700"} ${active ? (isDark ? "text-zinc-200" : "text-zinc-700") : (isDark ? "text-zinc-400" : "text-zinc-500")}`}
         onClick={() => {
           setSortDir((d) => (active ? (d === "asc" ? "desc" : "asc") : d));
           setSortKey(k);
@@ -125,4 +128,3 @@ function fmtTime(sec?: number) {
   const pad = (n: number) => String(n).padStart(2, "0");
   return `${d.getMonth() + 1}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
-

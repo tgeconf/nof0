@@ -1,10 +1,12 @@
 "use client";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useMemo } from "react";
+import { useTheme } from "@/store/useTheme";
 
 const SIDES = ["ALL", "LONG", "SHORT"] as const;
 
 export default function PositionsFilter({ models, symbols }: { models: string[]; symbols: string[] }) {
+  const isDark = useTheme((s) => s.resolved) === 'dark';
   const search = useSearchParams();
   const router = useRouter();
   const pathname = usePathname();
@@ -26,20 +28,20 @@ export default function PositionsFilter({ models, symbols }: { models: string[];
   }
 
   return (
-    <div className="mb-2 flex flex-wrap items-center gap-2 text-[11px] text-zinc-300">
-      <Select label="模型" value={model} options={modelOptions} onChange={(v) => setQuery({ model: v })} />
-      <Select label="币种" value={symbol} options={symbolOptions} onChange={(v) => setQuery({ symbol: v })} />
-      <Select label="方向" value={side} options={SIDES as unknown as string[]} onChange={(v) => setQuery({ side: v })} />
+    <div className={`mb-2 flex flex-wrap items-center gap-2 text-[11px] ${isDark?"text-zinc-300":"text-zinc-700"}`}>
+      <Select label="模型" value={model} options={modelOptions} onChange={(v) => setQuery({ model: v })} isDark={isDark} />
+      <Select label="币种" value={symbol} options={symbolOptions} onChange={(v) => setQuery({ symbol: v })} isDark={isDark} />
+      <Select label="方向" value={side} options={SIDES as unknown as string[]} onChange={(v) => setQuery({ side: v })} isDark={isDark} />
     </div>
   );
 }
 
-function Select({ label, value, options, onChange }: { label: string; value: string; options: string[]; onChange: (v: string) => void }) {
+function Select({ label, value, options, onChange, isDark }: { label: string; value: string; options: string[]; onChange: (v: string) => void; isDark: boolean }) {
   return (
     <label className="flex items-center gap-1">
-      <span className="text-zinc-400">{label}</span>
+      <span className={isDark?"text-zinc-400":"text-zinc-600"}>{label}</span>
       <select
-        className="rounded border border-white/10 bg-zinc-950 px-2 py-1 text-xs text-zinc-200"
+        className={`rounded border px-2 py-1 text-xs ${isDark?"border-white/10 bg-zinc-950 text-zinc-200":"border-black/10 bg-white text-zinc-800"}`}
         value={value}
         onChange={(e) => onChange(e.target.value)}
       >
@@ -52,4 +54,3 @@ function Select({ label, value, options, onChange }: { label: string; value: str
     </label>
   );
 }
-

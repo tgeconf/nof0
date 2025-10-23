@@ -287,28 +287,39 @@ export default function AccountValueChart() {
     );
   };
 
+  // theme-aware classes
+  const panelBorder = isDark ? "border-white/10" : "border-black/10";
+  const panelBg = isDark ? "bg-zinc-950" : "bg-white";
+  const mutText = isDark ? "text-zinc-300" : "text-zinc-600";
+  const tickFill = isDark ? "#a1a1aa" : "#52525b";
+  const gridStroke = isDark ? "rgba(0,0,0,0.12)" : "rgba(0,0,0,0.06)";
+  const refLine = isDark ? "#a1a1aa" : "#9ca3af";
+  const chipBorder = isDark ? "border-white/15" : "border-black/15";
+  const actBtn = isDark ? "bg-white/10 text-zinc-100" : "bg-black/10 text-zinc-800";
+  const inactBtn = isDark ? "text-zinc-300 hover:bg-white/5" : "text-zinc-600 hover:bg-black/5";
+
   return (
-    <div className="flex h-full flex-col rounded-md border border-white/10 bg-zinc-950 p-3">
+    <div className={`flex h-full flex-col rounded-md border ${panelBorder} ${panelBg} p-3`}>
       <div className="mb-2 flex items-center justify-between">
-        <div className="text-xs font-semibold tracking-wider text-zinc-300">账户总资产</div>
+        <div className={`text-xs font-semibold tracking-wider ${mutText}`}>账户总资产</div>
         {/* Small top-right range/unit toggles */}
         <div className="hidden sm:flex items-center gap-2 text-[11px]">
-          <div className="flex overflow-hidden rounded border border-white/15">
+          <div className={`flex overflow-hidden rounded border ${chipBorder}`}>
             {(["ALL", "72H"] as Range[]).map((r) => (
               <button
                 key={r}
-                className={`px-2 py-1 ${range === r ? "bg-white/10 text-zinc-100" : "text-zinc-300 hover:bg-white/5"}`}
+                className={`px-2 py-1 ${range === r ? actBtn : inactBtn}`}
                 onClick={() => setRange(r)}
               >
                 {r}
               </button>
             ))}
           </div>
-          <div className="flex overflow-hidden rounded border border-white/15">
+          <div className={`flex overflow-hidden rounded border ${chipBorder}`}>
             {(["$", "%"] as Mode[]).map((m) => (
               <button
                 key={m}
-                className={`px-2 py-1 ${mode === m ? "bg-white/10 text-zinc-100" : "text-zinc-300 hover:bg-white/5"}`}
+                className={`px-2 py-1 ${mode === m ? actBtn : inactBtn}`}
                 onClick={() => setMode(m)}
               >
                 {m}
@@ -340,22 +351,22 @@ export default function AccountValueChart() {
                 margin={{ top: 8, right: 170, bottom: 8, left: 0 }}
                 onMouseLeave={() => clearFocus()}
               >
-              <CartesianGrid stroke="rgba(255,255,255,0.06)" strokeDasharray="3 3" />
+              <CartesianGrid stroke={gridStroke} strokeDasharray="3 3" />
               <XAxis
                 dataKey="timestamp"
                 tickFormatter={(v: Date) => format(v, "MM-dd HH:mm")}
-                tick={{ fill: "#a1a1aa", fontSize: 11 }}
+                tick={{ fill: tickFill, fontSize: 11 }}
               />
-              <YAxis tickFormatter={(v: number) => (mode === "%" ? `${v.toFixed(1)}%` : `$${Math.round(v).toLocaleString()}`)} tick={{ fill: "#a1a1aa", fontSize: 11 }} width={60} domain={["auto", "auto"]} />
+              <YAxis tickFormatter={(v: number) => (mode === "%" ? `${v.toFixed(1)}%` : `$${Math.round(v).toLocaleString()}`)} tick={{ fill: tickFill, fontSize: 11 }} width={60} domain={["auto", "auto"]} />
               <Tooltip
-                contentStyle={{ background: "#09090b", border: "1px solid rgba(255,255,255,0.1)", color: "#e4e4e7" }}
+                contentStyle={{ background: isDark ? "#09090b" : "#ffffff", border: isDark ? "1px solid rgba(255,255,255,0.1)" : "1px solid rgba(0,0,0,0.12)", color: isDark ? "#e4e4e7" : "#18181b" }}
                 labelFormatter={(v) => (v instanceof Date ? format(v, "yyyy-MM-dd HH:mm") : String(v))}
                 formatter={(val: number) => (mode === "%" ? `${Number(val).toFixed(2)}%` : `$${Number(val).toFixed(2)}`)}
               />
               {mode === "$" ? (
-                <ReferenceLine y={10000} stroke="#a1a1aa" strokeDasharray="4 4" />
+                <ReferenceLine y={10000} stroke={refLine} strokeDasharray="4 4" />
               ) : (
-                <ReferenceLine y={0} stroke="#a1a1aa" strokeDasharray="4 4" />
+                <ReferenceLine y={0} stroke={refLine} strokeDasharray="4 4" />
               )}
               {models.map((id, i) => (
                 <Line
@@ -391,8 +402,8 @@ export default function AccountValueChart() {
                       key={id}
                       className={`w-full group inline-flex flex-col items-center justify-center gap-1 rounded border px-2.5 py-2 text-[12px] sm:text-[13px] transition-colors ${
                         activeOn
-                          ? "border-white/25 bg-white/5 text-zinc-100 hover:bg-white/10"
-                          : "border-white/10 text-zinc-400 hover:bg-white/5"
+                          ? (isDark ? "border-white/25 bg-white/5 text-zinc-100 hover:bg-white/10" : "border-black/20 bg-black/5 text-zinc-800 hover:bg-black/10")
+                          : (isDark ? "border-white/10 text-zinc-400 hover:bg-white/5" : "border-black/10 text-zinc-500 hover:bg-black/5")
                       }`}
                       onClick={() => {
                         setActive((prev) => {
@@ -412,7 +423,7 @@ export default function AccountValueChart() {
                         )}
                         <span className="truncate max-w-[9ch] sm:max-w-none">{getModelName(id)}</span>
                       </div>
-                      <div className="font-semibold leading-tight">
+                      <div className={`font-semibold leading-tight ${isDark ? "text-zinc-100" : "text-zinc-800"}`}>
                         {formatValue(lastValById[id])}
                       </div>
                     </button>
