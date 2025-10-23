@@ -26,6 +26,9 @@
   --brand-grok-4: #000000;
   --brand-gemini-2-5-pro: #4285f4;
   --brand-gpt-5: #10a37f;
+
+  /* Skeleton background by theme */
+  --skeleton-bg: rgba(255, 255, 255, 0.10);
 }
 
 @theme inline {
@@ -43,6 +46,7 @@
   --chart-logo-ring: rgba(0, 0, 0, 0.25);
   --logo-chip-bg: rgba(0, 0, 0, 0.06);
   --logo-chip-ring: rgba(0, 0, 0, 0.15);
+  --skeleton-bg: rgba(0, 0, 0, 0.10);
 }
 :root[data-theme="dark"] {
   --background: #0a0a0a;
@@ -51,6 +55,7 @@
   --chart-logo-ring: rgba(255, 255, 255, 0.28);
   --logo-chip-bg: rgba(255, 255, 255, 0.06);
   --logo-chip-ring: rgba(255, 255, 255, 0.15);
+  --skeleton-bg: rgba(255, 255, 255, 0.10);
 }
 
 body {
@@ -71,7 +76,9 @@ html, body { height: 100%; overflow: hidden; }
 }
 
 /* Terminal vibe background subtle scanlines */
-.terminal-scan {
+/* Disable scanlines by default (light). Only enable in dark theme. */
+.terminal-scan { background: none; }
+:root[data-theme="dark"] .terminal-scan {
   background:
     linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%),
     linear-gradient(90deg, rgba(255, 0, 0, 0.04), rgba(0, 255, 0, 0.02), rgba(0, 0, 255, 0.04));
@@ -105,3 +112,6 @@ html, body { height: 100%; overflow: hidden; }
 /* Remove focus ring on Chrome/macOS when clicking the SVG surface */
 .recharts-wrapper .recharts-surface, .recharts-wrapper .recharts-surface:focus, .recharts-wrapper .recharts-surface:focus-visible { outline: none !important; }
 .recharts-wrapper:focus, .recharts-wrapper *:focus { outline: none !important; }
+
+/* Themed skeleton background */
+.skeleton-bg { background: var(--skeleton-bg); }

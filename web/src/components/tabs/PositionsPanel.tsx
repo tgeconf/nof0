@@ -142,7 +142,7 @@ export function PositionsPanel() {
                   {filtered.map((p, i) => {
                     const side = p.quantity > 0 ? "LONG" : "SHORT";
                     return (
-                      <tr key={i} className={clsx("border-b", isDark?"border-white/5":"border-black/5", !isDark && i%2===1 && "bg-black/3") }>
+                      <tr key={i} className={clsx("border-b", isDark?"border-white/5":"border-black/5") }>
                         <td className="py-1.5 pr-3">{side}</td>
                         <td className="py-1.5 pr-3">{p.symbol}</td>
                         <td className="py-1.5 pr-3">{p.leverage}x</td>

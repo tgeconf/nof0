@@ -75,7 +75,7 @@ export default function TradesTable() {
               </>
             ) : pageRows.length ? (
               pageRows.map((t: any, idx: number) => (
-                <tr key={t.id} className={`border-b ${isDark ? "border-white/5" : "border-black/5"} ${!isDark && idx % 2 === 1 ? "bg-black/3" : ""}`}>
+                <tr key={t.id} className={`border-b ${isDark ? "border-white/5" : "border-black/5"}`}>
                   <td className="py-1.5 pr-3 tabular-nums">{fmtTime(t.exit_time || t.entry_time)}</td>
                   <td className="py-1.5 pr-3">{t.model_id}</td>
                   <td className="py-1.5 pr-3">{t.symbol}</td>

@@ -11,6 +11,7 @@ export default function ModelChatPanel() {
   const router = useRouter();
   const pathname = usePathname();
   const qModel = (search.get("model") || "ALL").trim();
+  const isDark = useTheme((s) => s.resolved) === 'dark';
 
   // Group conversations by model, sorted by time desc
   const grouped = useMemo(() => {
@@ -37,11 +38,10 @@ export default function ModelChatPanel() {
     return ids.map((id) => ({ model_id: id, latest: grouped[id][0], history: grouped[id].slice(1) }));
   }, [grouped, qModel]);
 
-  if (isLoading) return <div className="text-xs text-zinc-500">加载模型对话中…</div>;
-  if (isError) return <div className="text-xs text-red-400">模型对话接口暂不可用，请稍后重试。</div>;
-  if (!list.length) return <div className="text-xs text-zinc-500">暂无模型对话。</div>;
+  if (isLoading) return <div className={`text-xs ${isDark?"text-zinc-500":"text-zinc-600"}`}>加载模型对话中…</div>;
+  if (isError) return <div className={`text-xs ${isDark?"text-red-400":"text-red-600"}`}>模型对话接口暂不可用，请稍后重试。</div>;
+  if (!list.length) return <div className={`text-xs ${isDark?"text-zinc-500":"text-zinc-600"}`}>暂无模型对话。</div>;
 
-  const isDark = useTheme((s) => s.resolved) === 'dark';
   return (
     <div className="space-y-3">
       <FilterBar model={qModel} onChange={(v) => setModel(v)} models={["ALL", ...Object.keys(grouped)]} />

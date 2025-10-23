@@ -64,7 +64,7 @@ function MiniTable({ rows }: { rows: any[] }) {
         </thead>
         <tbody className={isDark?"text-zinc-200":"text-zinc-800"}>
           {rows.slice(0, 20).map((r, idx) => (
-            <tr key={idx} className={`border-b ${isDark?"border-white/5":"border-black/5"} ${!isDark && idx%2===1?"bg-black/3":""}`}>
+            <tr key={idx} className={`border-b ${isDark?"border-white/5":"border-black/5"}`}>
               {cols.map((c) => (
                 <td key={c} className="py-1.5 pr-3">{fmtAny(r[c])}</td>
               ))}
