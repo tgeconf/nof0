@@ -338,7 +338,7 @@ export default function AccountValueChart() {
           <div className="min-h-0 flex-1">
           <div
             ref={chartRef}
-            className="h-full w-full no-tap-highlight select-none"
+            className="relative h-full w-full no-tap-highlight select-none"
             tabIndex={-1}
             onMouseDown={(e) => {
               // Prevent Chrome from focusing the SVG on click, which shows a focus ring
@@ -387,6 +387,19 @@ export default function AccountValueChart() {
               ))}
             </LineChart>
             </ResponsiveContainer>
+            {/* Watermark (bottom-right, small) */}
+            <div className="pointer-events-none absolute right-2 bottom-2 select-none">
+              <div
+                className="font-semibold tracking-wider text-[10px] sm:text-xs md:text-sm"
+                style={{
+                  color: 'var(--watermark-color)',
+                  letterSpacing: '0.15em',
+                  userSelect: 'none',
+                }}
+              >
+                @wquguru
+              </div>
+            </div>
           </div>
           </div>
           {/* Bottom legend inside chart area flow */}

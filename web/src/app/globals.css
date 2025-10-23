@@ -29,6 +29,7 @@
 
   /* Skeleton background by theme */
   --skeleton-bg: rgba(255, 255, 255, 0.10);
+  --watermark-color: rgba(255, 255, 255, 0.06);
 }
 
 @theme inline {
@@ -47,6 +48,7 @@
   --logo-chip-bg: rgba(0, 0, 0, 0.06);
   --logo-chip-ring: rgba(0, 0, 0, 0.15);
   --skeleton-bg: rgba(0, 0, 0, 0.10);
+  --watermark-color: rgba(0, 0, 0, 0.06);
 }
 :root[data-theme="dark"] {
   --background: #0a0a0a;
@@ -56,6 +58,7 @@
   --logo-chip-bg: rgba(255, 255, 255, 0.06);
   --logo-chip-ring: rgba(255, 255, 255, 0.15);
   --skeleton-bg: rgba(255, 255, 255, 0.10);
+  --watermark-color: rgba(255, 255, 255, 0.06);
 }
 
 body {
