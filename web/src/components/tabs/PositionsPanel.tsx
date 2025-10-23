@@ -86,7 +86,7 @@ export function PositionsPanel() {
         const list: any[] = (totalsData && (totalsData as any).accountTotals) ? (totalsData as any).accountTotals : [];
         for (let i = list.length - 1; i >= 0; i--) {
           const row = list[i];
-          if (row?.model_id === m.id) {
+          if ((row?.model_id === m.id) || (row?.id === m.id)) {
             equity = row.dollar_equity ?? row.equity ?? row.account_value;
             realizedPnL = row.realized_pnl;
             break;

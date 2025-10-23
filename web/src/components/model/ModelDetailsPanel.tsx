@@ -21,7 +21,8 @@ export default function ModelDetailsPanel({ modelId: propModelId }: { modelId?: 
     // Find latest entry for modelId
     let row: any | undefined;
     for (let i = list.length - 1; i >= 0; i--) {
-      if (list[i]?.model_id === modelId) { row = list[i]; break; }
+      const r = list[i];
+      if (r?.model_id === modelId || r?.id === modelId) { row = r; break; }
     }
     if (!row && list.length) row = list[list.length - 1];
     return row;

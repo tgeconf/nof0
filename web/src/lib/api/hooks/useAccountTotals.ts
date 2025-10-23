@@ -1,6 +1,7 @@
 "use client";
 import useSWR from "swr";
 import { endpoints, fetcher } from "../nof1";
+import type { RawPositionRow } from "./usePositions";
 
 export interface AccountTotalsRow {
   model_id: string;
@@ -11,6 +12,7 @@ export interface AccountTotalsRow {
   realized_pnl?: number;
   unrealized_pnl?: number;
   return_pct?: number;
+  positions?: Record<string, RawPositionRow>;
 }
 
 type AccountTotalsResponse = { accountTotals: AccountTotalsRow[] };

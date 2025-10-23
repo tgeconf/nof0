@@ -1,7 +1,7 @@
 "use client";
 import { useState, useMemo } from "react";
 import { useLeaderboard, LeaderboardRow } from "@/lib/api/hooks/useLeaderboard";
-import { getModelName } from "@/lib/model/meta";
+import { getModelName, getModelMeta } from "@/lib/model/meta";
 import { fmtUSD, pnlClass } from "@/lib/utils/formatters";
 import ErrorBanner from "@/components/ui/ErrorBanner";
 import { SkeletonRow } from "@/components/ui/Skeleton";
@@ -55,7 +55,12 @@ export default function LeaderboardTable() {
                 <tr key={r.id} className={clsx("border-b border-white/5", idx === 0 && "bg-white/5")}> 
                   <td className="py-1.5 pr-3">{idx + 1}</td>
                   <td className="py-1.5 pr-3">
-                    <a className="hover:underline" href={`/?tab=chat&model=${encodeURIComponent(r.id)}`}>{getModelName(r.id)}</a>
+                    <a className="inline-flex items-center gap-2 hover:underline" href={`/?tab=chat&model=${encodeURIComponent(r.id)}`}>
+                      {getModelMeta(r.id).icon ? (
+                        <img src={getModelMeta(r.id).icon} alt="" className="h-4 w-4 rounded-sm object-contain" />
+                      ) : null}
+                      {getModelName(r.id)}
+                    </a>
                   </td>
                   <td className="py-1.5 pr-3 tabular-nums">{fmtUSD(r.equity)}</td>
                   <td className={clsx("py-1.5 pr-3 tabular-nums", pnlClass(r.return_pct))}>{r.return_pct != null ? `${r.return_pct.toFixed(2)}%` : "—"}</td>

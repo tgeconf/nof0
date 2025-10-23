@@ -1,7 +1,7 @@
 "use client";
 import Modal from "@/components/ui/Modal";
 import { fmtUSD } from "@/lib/utils/formatters";
-import type { ExitPlan } from "@/lib/api/hooks/usePositions";
+import type { ExitPlan } from "@/lib/api/types";
 
 export function ExitPlanModal({
   open,

@@ -2,7 +2,7 @@
 import { useConversations } from "@/lib/api/hooks/useConversations";
 import { useSearchParams, useRouter, usePathname } from "next/navigation";
 import { useMemo, useState } from "react";
-import { getModelName, getModelColor } from "@/lib/model/meta";
+import { getModelName, getModelColor, getModelMeta } from "@/lib/model/meta";
 
 export default function ModelChatPanel() {
   const { items, isLoading, isError } = useConversations();
@@ -96,7 +96,12 @@ function ChatCard({ modelId, content, timestamp, user_prompt, cot_trace, llm_res
   return (
     <div className="rounded-md border p-3" style={{ borderColor: `${color}55`, background: `linear-gradient(0deg, ${color}14, transparent)` }}>
       <div className="mb-2 flex items-center justify-between">
-        <div className="text-sm font-semibold" style={{ color }}>{getModelName(modelId)}</div>
+        <div className="flex items-center gap-2">
+          {getModelMeta(modelId).icon ? (
+            <img src={getModelMeta(modelId).icon!} alt="" className="h-5 w-5 rounded-sm object-contain" />
+          ) : null}
+          <div className="text-sm font-semibold" style={{ color }}>{getModelName(modelId)}</div>
+        </div>
         <div className="text-[11px] text-zinc-400">{fmtTime(timestamp)}</div>
       </div>
       <div className="relative">

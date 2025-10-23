@@ -1,19 +1,9 @@
 "use client";
 import { useEffect, useMemo, useRef, useState } from "react";
-import {
-  LineChart,
-  Line,
-  XAxis,
-  YAxis,
-  Tooltip,
-  Legend,
-  ResponsiveContainer,
-  CartesianGrid,
-  ReferenceLine,
-} from "recharts";
+import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, ReferenceLine } from "recharts";
 import { useAccountValueSeries } from "@/lib/api/hooks/useAccountValueSeries";
 import { format } from "date-fns";
-import { getModelColor, getModelName } from "@/lib/model/meta";
+import { getModelColor, getModelName, getModelIcon } from "@/lib/model/meta";
 import ErrorBanner from "@/components/ui/ErrorBanner";
 import { SkeletonBlock } from "@/components/ui/Skeleton";
 
@@ -41,10 +31,19 @@ export default function AccountValueChart() {
   const [ids, setIds] = useState<string[]>([]);
   const lastTsRef = useRef<number | null>(null);
   const [active, setActive] = useState<Set<string>>(new Set());
+  const [vw, setVw] = useState<number>(0);
 
   // Initialize cutoff time on client side to avoid hydration mismatch
   useEffect(() => {
     cutoffTimeRef.current = Date.now() - 72 * 3600 * 1000;
+  }, []);
+
+  // Track viewport width for responsive sizing (logo size, button sizing)
+  useEffect(() => {
+    const upd = () => setVw(typeof window !== "undefined" ? window.innerWidth : 0);
+    upd();
+    window.addEventListener("resize", upd);
+    return () => window.removeEventListener("resize", upd);
   }, []);
 
   // Append-only updates to避免整表重建
@@ -137,42 +136,52 @@ export default function AccountValueChart() {
     return { data: points, models: ids };
   }, [dataRows, ids, range, mode]);
 
+  // compute last index per model to render only the end dot as logo
+  const lastIdxById = useMemo(() => {
+    const m: Record<string, number> = {};
+    for (const id of models) {
+      for (let i = data.length - 1; i >= 0; i--) {
+        const v = (data[i] as any)[id];
+        if (typeof v === "number") { m[id] = i; break; }
+      }
+    }
+    return m;
+  }, [models, data]);
+
+  const renderEndDot = (id: string) => (p: any) => {
+    const { cx, cy, index } = p || {};
+    if (cx == null || cy == null) return null;
+    if (typeof lastIdxById[id] !== "number" || index !== lastIdxById[id]) return null;
+    if (active.size && !active.has(id)) return null;
+    const icon = getModelIcon(id);
+    const color = getModelColor(id);
+    const size = vw < 640 ? 30 : vw < 1024 ? 26 : 22; // bigger, more prominent
+    return (
+      <g key={`${id}-dot-${index}`} transform={`translate(${cx}, ${cy})`} pointerEvents="none">
+        <circle r={Math.round(size * 0.9)} className="animate-ping" fill={color} opacity={0.2} />
+        {icon ? (
+          <image href={icon} x={-size / 2} y={-size / 2} width={size} height={size} style={{ filter: "drop-shadow(0 0 2px rgba(0,0,0,0.6))" }} />
+        ) : (
+          <circle r={Math.max(6, Math.round(size * 0.42))} fill={color} />
+        )}
+      </g>
+    );
+  };
+
   return (
     <div className="flex h-full flex-col rounded-md border border-white/10 bg-zinc-950 p-3">
-      <div className="mb-1 flex items-center justify-between">
-        <div className="text-xs font-semibold tracking-wider text-zinc-300">TOTAL ACCOUNT VALUE</div>
-        <div className="flex items-center gap-2 text-xs">
-          <div className="flex overflow-hidden rounded border border-white/10">
-            {(["ALL", "72H"] as Range[]).map((r) => (
-              <button
-                key={r}
-                className={`px-2 py-1 ${range === r ? "bg-white/10 text-zinc-100" : "text-zinc-300 hover:bg-white/5"}`}
-                onClick={() => setRange(r)}
-              >
-                {r}
-              </button>
-            ))}
-          </div>
-          <div className="flex overflow-hidden rounded border border-white/10">
-            {(["$", "%"] as Mode[]).map((m) => (
-              <button
-                key={m}
-                className={`px-2 py-1 ${mode === m ? "bg-white/10 text-zinc-100" : "text-zinc-300 hover:bg-white/5"}`}
-                onClick={() => setMode(m)}
-              >
-                {m}
-              </button>
-            ))}
-          </div>
-        </div>
+      <div className="mb-2 flex items-center justify-between">
+        <div className="text-xs font-semibold tracking-wider text-zinc-300">账户总资产</div>
       </div>
+      {/* Legend below chart */}
       <ErrorBanner message={isError ? "账户价值数据源暂时不可用，请稍后重试。" : undefined} />
       <div className="w-full flex-1">
         {isLoading ? (
           <SkeletonBlock className="h-full" />
         ) : data.length >= 2 ? (
+          <>
           <ResponsiveContainer>
-            <LineChart data={data} margin={{ top: 8, right: 80, bottom: 8, left: 0 }}>
+            <LineChart data={data} margin={{ top: 8, right: 110, bottom: 8, left: 0 }}>
               <CartesianGrid stroke="rgba(255,255,255,0.06)" strokeDasharray="3 3" />
               <XAxis
                 dataKey="timestamp"
@@ -190,24 +199,12 @@ export default function AccountValueChart() {
               ) : (
                 <ReferenceLine y={0} stroke="#a1a1aa" strokeDasharray="4 4" />
               )}
-              <Legend
-                wrapperStyle={{ color: "#a1a1aa" }}
-                onClick={(e: any) => {
-                  const id = e?.dataKey as string | undefined;
-                  if (!id) return;
-                  setActive((prev) => {
-                    const next = new Set(prev);
-                    if (next.has(id)) next.delete(id); else next.add(id);
-                    return next;
-                  });
-                }}
-              />
               {models.map((id, i) => (
                 <Line
                   key={id}
                   type="monotone"
                   dataKey={id}
-                  dot={data.length < 50}
+                  dot={renderEndDot(id)}
                   connectNulls
                   stroke={getModelColor(id)}
                   strokeWidth={1.8}
@@ -220,6 +217,69 @@ export default function AccountValueChart() {
               ))}
             </LineChart>
           </ResponsiveContainer>
+          {/* Bottom legend inside chart area flow */}
+          {models.length > 0 && (
+            <div className="mt-3">
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5">
+                {models.map((id) => {
+                  const activeOn = active.size ? active.has(id) : true;
+                  const icon = getModelIcon(id);
+                  return (
+                    <button
+                      key={id}
+                      className={`w-full group inline-flex items-center justify-start gap-2 rounded border px-3 py-2 text-[13px] sm:text-[14px] transition-colors ${
+                        activeOn
+                          ? "border-white/25 bg-white/5 text-zinc-100 hover:bg-white/10"
+                          : "border-white/10 text-zinc-400 hover:bg-white/5"
+                      }`}
+                      onClick={() => {
+                        setActive((prev) => {
+                          if (prev.size === 1 && prev.has(id)) return new Set(models);
+                          return new Set([id]);
+                        });
+                      }}
+                    >
+                      {icon ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={icon} alt="" className="h-5 w-5 sm:h-6 sm:w-6 rounded-sm object-contain opacity-95" />
+                      ) : (
+                        <span
+                          className="inline-block h-3.5 w-3.5 sm:h-4 sm:w-4 rounded-full"
+                          style={{ background: getModelColor(id) }}
+                        />
+                      )}
+                      <span className="truncate">{getModelName(id)}</span>
+                    </button>
+                  );
+                })}
+              </div>
+              <div className="mt-2 flex flex-wrap items-center gap-2">
+                <div className="flex overflow-hidden rounded border border-white/15">
+                  {(["ALL", "72H"] as Range[]).map((r) => (
+                    <button
+                      key={r}
+                      className={`px-3 py-2 sm:px-3.5 sm:py-2 ${range === r ? "bg-white/10 text-zinc-100" : "text-zinc-300 hover:bg-white/5"}`}
+                      onClick={() => setRange(r)}
+                    >
+                      {r}
+                    </button>
+                  ))}
+                </div>
+                <div className="flex overflow-hidden rounded border border-white/15">
+                  {(["$", "%"] as Mode[]).map((m) => (
+                    <button
+                      key={m}
+                      className={`px-3 py-2 sm:px-3.5 sm:py-2 ${mode === m ? "bg-white/10 text-zinc-100" : "text-zinc-300 hover:bg-white/5"}`}
+                      onClick={() => setMode(m)}
+                    >
+                      {m}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+          </>
         ) : (
           <div className="flex h-full flex-col items-center justify-center gap-2 text-sm text-zinc-400">
             <div>暂无足够的图表数据（需要至少 2 个时间点）。</div>

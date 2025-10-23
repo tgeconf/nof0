@@ -1,12 +1,7 @@
 "use client";
 import useSWR from "swr";
 import { endpoints, fetcher } from "../nof1";
-
-export interface ExitPlan {
-  profit_target?: number;
-  stop_loss?: number;
-  invalidation_condition?: string;
-}
+import type { AccountTotalsRow } from "./useAccountTotals";
 
 export interface RawPositionRow {
   entry_oid: number;
@@ -24,23 +19,39 @@ export interface RawPositionRow {
   closed_pnl?: number;
 }
 
+export interface ExitPlan {
+  profit_target?: number;
+  stop_loss?: number;
+  invalidation_condition?: string;
+}
+
 export interface PositionsByModel {
   id: string; // model id
   positions: Record<string, RawPositionRow>;
 }
 
-type PositionsResponse = { positions: PositionsByModel[] };
+export function usePositions() {
+  const { data, error, isLoading } = useSWR<{ accountTotals: AccountTotalsRow[] }>(
+    endpoints.accountTotals(),
+    fetcher,
+    {
+      refreshInterval: 5000,
+      dedupingInterval: 2000,
+    }
+  );
 
-export function usePositions(limit = 1000) {
-  const { data, error, isLoading } = useSWR<PositionsResponse>(endpoints.positions(limit), fetcher, {
-    refreshInterval: 5000,
-    dedupingInterval: 2000,
-  });
+  const positionsByModel: PositionsByModel[] = (() => {
+    const rows = data?.accountTotals ?? [];
+    const latestById = new Map<string, AccountTotalsRow & { positions?: Record<string, RawPositionRow> }>();
+    for (const row of rows) {
+      const id = String((row as any).model_id ?? (row as any).id ?? "");
+      if (!id) continue;
+      const ts = Number((row as any).timestamp ?? 0);
+      const prev = latestById.get(id);
+      if (!prev || Number((prev as any).timestamp ?? 0) <= ts) latestById.set(id, row as any);
+    }
+    return Array.from(latestById.entries()).map(([id, row]) => ({ id, positions: (row as any).positions ?? {} }));
+  })();
 
-  return {
-    positionsByModel: data?.positions ?? [],
-    isLoading,
-    isError: !!error,
-  };
+  return { positionsByModel, isLoading, isError: !!error };
 }
-
