@@ -1,10 +1,31 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  /* default to dark theme */
+  --background: #0a0a0a;
+  --foreground: #ededed;
   --header-h: 40px;
   --ticker-h: 28px;
+  /* Theme-aware logo chips (light defaults) */
+  --chart-logo-bg: rgba(255, 255, 255, 0.9);
+  --chart-logo-ring: rgba(255, 255, 255, 0.28);
+  --logo-chip-bg: rgba(255, 255, 255, 0.06);
+  --logo-chip-ring: rgba(255, 255, 255, 0.15);
+
+  /* Global model brand colors (for CSS usage) */
+  --brand-qwen: #8b5cf6;
+  --brand-deepseek: #4d6bfe;
+  --brand-claude-sonnet: #ff6b35;
+  --brand-grok: #000000;
+  --brand-gemini: #4285f4;
+  --brand-gpt5: #10a37f;
+  /* also expose canonical ids */
+  --brand-qwen3-max: #8b5cf6;
+  --brand-deepseek-chat-v3_1: #4d6bfe;
+  --brand-claude-sonnet-4-5: #ff6b35;
+  --brand-grok-4: #000000;
+  --brand-gemini-2-5-pro: #4285f4;
+  --brand-gpt-5: #10a37f;
 }
 
 @theme inline {
@@ -14,11 +35,22 @@
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+/* explicit theme overrides via data-theme */
+:root[data-theme="light"] {
+  --background: #ffffff;
+  --foreground: #171717;
+  --chart-logo-bg: rgba(0, 0, 0, 0.75);
+  --chart-logo-ring: rgba(0, 0, 0, 0.25);
+  --logo-chip-bg: rgba(0, 0, 0, 0.06);
+  --logo-chip-ring: rgba(0, 0, 0, 0.15);
+}
+:root[data-theme="dark"] {
+  --background: #0a0a0a;
+  --foreground: #ededed;
+  --chart-logo-bg: rgba(255, 255, 255, 0.9);
+  --chart-logo-ring: rgba(255, 255, 255, 0.28);
+  --logo-chip-bg: rgba(255, 255, 255, 0.06);
+  --logo-chip-ring: rgba(255, 255, 255, 0.15);
 }
 
 body {
@@ -45,3 +77,31 @@ html, body { height: 100%; overflow: hidden; }
     linear-gradient(90deg, rgba(255, 0, 0, 0.04), rgba(0, 255, 0, 0.02), rgba(0, 0, 255, 0.04));
   background-size: 100% 2px, 3px 100%;
 }
+
+/* Reusable logo chip styles */
+.logo-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--logo-chip-bg);
+  border: 1px solid var(--logo-chip-ring);
+  border-radius: 6px;
+}
+.logo-chip-sm { width: 16px; height: 16px; }
+.logo-chip-md { width: 20px; height: 20px; }
+
+/* Smooth focus/dim transitions for Recharts line groups */
+.recharts-wrapper g.series path {
+  transition: opacity 160ms ease, stroke-width 160ms ease;
+}
+.recharts-wrapper g.series.dim path { opacity: 0.25; }
+.recharts-wrapper g.series.focused path { opacity: 1; stroke-width: 2.4px; }
+
+/* Remove tap/click highlight around SVG content inside charts */
+.no-tap-highlight { -webkit-tap-highlight-color: transparent; }
+.recharts-wrapper, .recharts-wrapper * { -webkit-tap-highlight-color: transparent; }
+.recharts-wrapper svg { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+.recharts-wrapper image, .recharts-wrapper g:focus { outline: none; }
+/* Remove focus ring on Chrome/macOS when clicking the SVG surface */
+.recharts-wrapper .recharts-surface, .recharts-wrapper .recharts-surface:focus, .recharts-wrapper .recharts-surface:focus-visible { outline: none !important; }
+.recharts-wrapper:focus, .recharts-wrapper *:focus { outline: none !important; }

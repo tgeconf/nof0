@@ -3,7 +3,9 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, ReferenceLine } from "recharts";
 import { useAccountValueSeries } from "@/lib/api/hooks/useAccountValueSeries";
 import { format } from "date-fns";
-import { getModelColor, getModelName, getModelIcon } from "@/lib/model/meta";
+import { getModelColor, getModelName, getModelIcon, resolveCanonicalId } from "@/lib/model/meta";
+import { useTheme } from "@/store/useTheme";
+import { adjustLuminance } from "@/lib/ui/useDominantColors";
 import ErrorBanner from "@/components/ui/ErrorBanner";
 import { SkeletonBlock } from "@/components/ui/Skeleton";
 
@@ -32,6 +34,30 @@ export default function AccountValueChart() {
   const lastTsRef = useRef<number | null>(null);
   const [active, setActive] = useState<Set<string>>(new Set());
   const [vw, setVw] = useState<number>(0);
+  const resolvedTheme = useTheme((s) => s.resolved);
+  const isDark = resolvedTheme === 'dark';
+  const chartRef = useRef<HTMLDivElement | null>(null);
+
+  const cssSafe = (s: string) => s.toLowerCase().replace(/[^a-z0-9_-]+/g, "-");
+
+  const clearFocus = () => {
+    const root = chartRef.current;
+    if (!root) return;
+    root.querySelectorAll('g.series').forEach((g) => {
+      g.classList.remove('dim');
+      g.classList.remove('focused');
+    });
+  };
+
+  const focusSeries = (id: string) => {
+    const root = chartRef.current;
+    if (!root) return;
+    const safe = cssSafe(id);
+    const all = root.querySelectorAll('g.series');
+    all.forEach((g) => g.classList.add('dim'));
+    const target = root.querySelector(`g.series.series-${safe}`);
+    if (target) target.classList.add('focused');
+  };
 
   // Initialize cutoff time on client side to avoid hydration mismatch
   useEffect(() => {
@@ -45,6 +71,43 @@ export default function AccountValueChart() {
     window.addEventListener("resize", upd);
     return () => window.removeEventListener("resize", upd);
   }, []);
+
+
+  function hexToRGB(hex: string): { r: number; g: number; b: number } | null {
+    const m = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex.trim());
+    if (!m) return null;
+    return { r: parseInt(m[1], 16), g: parseInt(m[2], 16), b: parseInt(m[3], 16) };
+  }
+
+  function relativeLuminance(hex: string): number | null {
+    const rgb = hexToRGB(hex);
+    if (!rgb) return null;
+    const toLin = (c: number) => {
+      const s = c / 255;
+      return s <= 0.03928 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4);
+    };
+    const r = toLin(rgb.r), g = toLin(rgb.g), b = toLin(rgb.b);
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+  }
+
+  function getStrokeColor(id: string): string {
+    const base = getModelColor(id);
+    const lum = relativeLuminance(base);
+    if (lum == null) return base;
+    const canon = resolveCanonicalId(id);
+    if (isDark && canon === 'grok-4') {
+      return '#ffffff';
+    }
+    if (isDark && lum < 0.06) {
+      // too dark on dark bg → lift to neutral zinc-300 for visibility
+      return '#d4d4d8';
+    }
+    if (!isDark && lum > 0.94) {
+      // too light on light bg → darken a bit
+      return adjustLuminance(base, -0.25);
+    }
+    return base;
+  }
 
   // Append-only updates to避免整表重建
   useEffect(() => {
@@ -136,6 +199,8 @@ export default function AccountValueChart() {
     return { data: points, models: ids };
   }, [dataRows, ids, range, mode]);
 
+  // prefer global brand colors from meta as background for logo chips
+
   // compute last index per model to render only the end dot as logo
   const lastIdxById = useMemo(() => {
     const m: Record<string, number> = {};
@@ -148,6 +213,28 @@ export default function AccountValueChart() {
     return m;
   }, [models, data]);
 
+  const lastValById = useMemo(() => {
+    const m: Record<string, number | undefined> = {};
+    for (const id of models) {
+      const idx = lastIdxById[id];
+      if (typeof idx === "number") {
+        const v = (data[idx] as any)?.[id];
+        if (typeof v === "number") m[id] = v;
+      }
+    }
+    return m;
+  }, [models, data, lastIdxById]);
+
+  const formatValue = (v: number | undefined) => {
+    if (typeof v !== "number") return "--";
+    if (mode === "%") return `${v >= 0 ? "+" : ""}${v.toFixed(1)}%`;
+    try {
+      return `$${Math.round(v).toLocaleString()}`;
+    } catch {
+      return `$${Math.round(v)}`;
+    }
+  };
+
   const renderEndDot = (id: string) => (p: any) => {
     const { cx, cy, index } = p || {};
     if (cx == null || cy == null) return null;
@@ -155,15 +242,47 @@ export default function AccountValueChart() {
     if (active.size && !active.has(id)) return null;
     const icon = getModelIcon(id);
     const color = getModelColor(id);
-    const size = vw < 640 ? 30 : vw < 1024 ? 26 : 22; // bigger, more prominent
+    const bg = color || "var(--chart-logo-bg)";
+    const ring = typeof bg === "string" && bg.startsWith("#") ? adjustLuminance(bg, -0.15) : "var(--chart-logo-ring)";
+    const baseSize = vw < 640 ? 60 : vw < 1024 ? 52 : 44; // previous large size
+    const size = Math.round(baseSize * 2 / 3); // logo size to 2/3
+    const haloR = Math.round(baseSize / 3); // halo to 1/3 of previous radius
     return (
-      <g key={`${id}-dot-${index}`} transform={`translate(${cx}, ${cy})`} pointerEvents="none">
-        <circle r={Math.round(size * 0.9)} className="animate-ping" fill={color} opacity={0.2} />
-        {icon ? (
-          <image href={icon} x={-size / 2} y={-size / 2} width={size} height={size} style={{ filter: "drop-shadow(0 0 2px rgba(0,0,0,0.6))" }} />
-        ) : (
-          <circle r={Math.max(6, Math.round(size * 0.42))} fill={color} />
-        )}
+      <g
+        key={`${id}-dot-${index}`}
+        transform={`translate(${cx}, ${cy})`}
+        style={{ cursor: 'pointer' }}
+        onMouseEnter={() => focusSeries(id)}
+        onMouseLeave={() => clearFocus()}
+      >
+        <g
+          style={{
+            transform: `scale(1)`,
+            transformBox: 'fill-box',
+            transformOrigin: '50% 50%',
+            transition: 'transform 160ms ease',
+          }}
+        >
+          {/* soft pulse halo (reduced) */}
+          <circle r={haloR} className="animate-ping" fill={color} opacity={0.075} />
+          {/* theme-aware solid chip behind logo for contrast */}
+          <circle r={Math.round(size * 0.55)} fill={bg as any} stroke={ring as any} strokeWidth={1} />
+          {icon ? (
+            <image
+              href={icon}
+              x={-size / 2}
+              y={-size / 2}
+              width={size}
+              height={size}
+              focusable="false"
+              tabIndex={-1}
+              preserveAspectRatio="xMidYMid meet"
+              style={{ filter: "drop-shadow(0 0 2px rgba(0,0,0,0.6))", pointerEvents: 'none' }}
+            />
+          ) : (
+            <circle r={Math.max(6, Math.round(size * 0.38))} fill={color} />
+          )}
+        </g>
       </g>
     );
   };
@@ -172,16 +291,55 @@ export default function AccountValueChart() {
     <div className="flex h-full flex-col rounded-md border border-white/10 bg-zinc-950 p-3">
       <div className="mb-2 flex items-center justify-between">
         <div className="text-xs font-semibold tracking-wider text-zinc-300">账户总资产</div>
+        {/* Small top-right range/unit toggles */}
+        <div className="hidden sm:flex items-center gap-2 text-[11px]">
+          <div className="flex overflow-hidden rounded border border-white/15">
+            {(["ALL", "72H"] as Range[]).map((r) => (
+              <button
+                key={r}
+                className={`px-2 py-1 ${range === r ? "bg-white/10 text-zinc-100" : "text-zinc-300 hover:bg-white/5"}`}
+                onClick={() => setRange(r)}
+              >
+                {r}
+              </button>
+            ))}
+          </div>
+          <div className="flex overflow-hidden rounded border border-white/15">
+            {(["$", "%"] as Mode[]).map((m) => (
+              <button
+                key={m}
+                className={`px-2 py-1 ${mode === m ? "bg-white/10 text-zinc-100" : "text-zinc-300 hover:bg-white/5"}`}
+                onClick={() => setMode(m)}
+              >
+                {m}
+              </button>
+            ))}
+          </div>
+        </div>
       </div>
       {/* Legend below chart */}
       <ErrorBanner message={isError ? "账户价值数据源暂时不可用，请稍后重试。" : undefined} />
-      <div className="w-full flex-1">
+      <div className="w-full flex-1 min-h-0 flex flex-col">
         {isLoading ? (
           <SkeletonBlock className="h-full" />
         ) : data.length >= 2 ? (
           <>
-          <ResponsiveContainer>
-            <LineChart data={data} margin={{ top: 8, right: 110, bottom: 8, left: 0 }}>
+          <div className="min-h-0 flex-1">
+          <div
+            ref={chartRef}
+            className="h-full w-full no-tap-highlight select-none"
+            tabIndex={-1}
+            onMouseDown={(e) => {
+              // Prevent Chrome from focusing the SVG on click, which shows a focus ring
+              e.preventDefault();
+            }}
+          >
+            <ResponsiveContainer>
+              <LineChart
+                data={data}
+                margin={{ top: 8, right: 170, bottom: 8, left: 0 }}
+                onMouseLeave={() => clearFocus()}
+              >
               <CartesianGrid stroke="rgba(255,255,255,0.06)" strokeDasharray="3 3" />
               <XAxis
                 dataKey="timestamp"
@@ -206,7 +364,8 @@ export default function AccountValueChart() {
                   dataKey={id}
                   dot={renderEndDot(id)}
                   connectNulls
-                  stroke={getModelColor(id)}
+                  className={`series series-${cssSafe(id)}`}
+                  stroke={getStrokeColor(id)}
                   strokeWidth={1.8}
                   isAnimationActive
                   animationDuration={700}
@@ -216,18 +375,21 @@ export default function AccountValueChart() {
                 />
               ))}
             </LineChart>
-          </ResponsiveContainer>
+            </ResponsiveContainer>
+          </div>
+          </div>
           {/* Bottom legend inside chart area flow */}
           {models.length > 0 && (
             <div className="mt-3">
-              <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5">
+              {/* Single-row adaptive legend: equal-width buttons, stacked content */}
+              <div className="grid gap-2" style={{ gridTemplateColumns: `repeat(${models.length}, minmax(0, 1fr))` }}>
                 {models.map((id) => {
                   const activeOn = active.size ? active.has(id) : true;
                   const icon = getModelIcon(id);
                   return (
                     <button
                       key={id}
-                      className={`w-full group inline-flex items-center justify-start gap-2 rounded border px-3 py-2 text-[13px] sm:text-[14px] transition-colors ${
+                      className={`w-full group inline-flex flex-col items-center justify-center gap-1 rounded border px-2.5 py-2 text-[12px] sm:text-[13px] transition-colors ${
                         activeOn
                           ? "border-white/25 bg-white/5 text-zinc-100 hover:bg-white/10"
                           : "border-white/10 text-zinc-400 hover:bg-white/5"
@@ -239,44 +401,25 @@ export default function AccountValueChart() {
                         });
                       }}
                     >
-                      {icon ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img src={icon} alt="" className="h-5 w-5 sm:h-6 sm:w-6 rounded-sm object-contain opacity-95" />
-                      ) : (
-                        <span
-                          className="inline-block h-3.5 w-3.5 sm:h-4 sm:w-4 rounded-full"
-                          style={{ background: getModelColor(id) }}
-                        />
-                      )}
-                      <span className="truncate">{getModelName(id)}</span>
+                      <div className="flex items-center gap-1 text-[11px] opacity-90">
+                        {icon ? (
+                          <span className="logo-chip logo-chip-sm" style={{ background: getModelColor(id), borderColor: adjustLuminance(getModelColor(id), -0.2) }}>
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img src={icon} alt="" className="h-3 w-3 object-contain" />
+                          </span>
+                        ) : (
+                          <span className="inline-block h-3 w-3 rounded-full" style={{ background: getModelColor(id) }} />
+                        )}
+                        <span className="truncate max-w-[9ch] sm:max-w-none">{getModelName(id)}</span>
+                      </div>
+                      <div className="font-semibold leading-tight">
+                        {formatValue(lastValById[id])}
+                      </div>
                     </button>
                   );
                 })}
               </div>
-              <div className="mt-2 flex flex-wrap items-center gap-2">
-                <div className="flex overflow-hidden rounded border border-white/15">
-                  {(["ALL", "72H"] as Range[]).map((r) => (
-                    <button
-                      key={r}
-                      className={`px-3 py-2 sm:px-3.5 sm:py-2 ${range === r ? "bg-white/10 text-zinc-100" : "text-zinc-300 hover:bg-white/5"}`}
-                      onClick={() => setRange(r)}
-                    >
-                      {r}
-                    </button>
-                  ))}
-                </div>
-                <div className="flex overflow-hidden rounded border border-white/15">
-                  {(["$", "%"] as Mode[]).map((m) => (
-                    <button
-                      key={m}
-                      className={`px-3 py-2 sm:px-3.5 sm:py-2 ${mode === m ? "bg-white/10 text-zinc-100" : "text-zinc-300 hover:bg-white/5"}`}
-                      onClick={() => setMode(m)}
-                    >
-                      {m}
-                    </button>
-                  ))}
-                </div>
-              </div>
+              {/* Range/unit toggles moved to top-right; no bottom controls */}
             </div>
           )}
           </>
