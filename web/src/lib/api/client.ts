@@ -7,8 +7,10 @@ export async function fetcher<T = unknown>(
 ): Promise<T> {
   const res = await fetch(url, {
     ...init,
-    // Ensure no-cache semantics but allow browser caching heuristics
-    cache: "no-store",
+    // Allow the browser HTTP cache to satisfy short‑interval polling.
+    // Combined with Cache-Control from our proxy, this avoids hitting Vercel at all
+    // when data is fresh, dramatically reducing Fast Data Transfer.
+    cache: init?.cache ?? "default",
   });
   if (!res.ok) {
     const text = await res.text().catch(() => "");

@@ -22,8 +22,7 @@ export function useAccountTotals(lastHourlyMarker?: number) {
     endpoints.accountTotals(lastHourlyMarker),
     fetcher,
     {
-      refreshInterval: 10000, // Reduced from 5s to 10s to minimize Fast Origin Transfer costs
-      dedupingInterval: 2000,
+      refreshInterval: 10000,
     },
   );
 

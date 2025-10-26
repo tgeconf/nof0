@@ -3,6 +3,7 @@ import Script from "next/script";
 import { Geist, Geist_Mono, IBM_Plex_Mono } from "next/font/google";
 import "./globals.css";
 import Header from "@/components/layout/Header";
+import SWRProvider from "@/components/providers/SWRProvider";
 import ThemeProvider from "@/components/theme/ThemeProvider";
 import { Analytics } from "@vercel/analytics/next";
 
@@ -52,10 +53,12 @@ export default function RootLayout({
         className={`${geistSans.variable} ${geistMono.variable} ${plexMono.variable} antialiased`}
       >
         <ThemeProvider />
-        <div className="min-h-screen">
-          <Header />
-          {children}
-        </div>
+        <SWRProvider>
+          <div className="min-h-screen">
+            <Header />
+            {children}
+          </div>
+        </SWRProvider>
         <Analytics />
       </body>
     </html>
