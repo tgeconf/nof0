@@ -1,4 +1,4 @@
-# NOF0 - 开箱即用的Agent Trading项目
+# NOF0 - 开箱即用的Agentic Trading项目
 
 > **终极目标**: 完整复刻 [NOF1.ai](https://nof1.ai) Alpha Arena，打造开源的AI交易竞技平台
 
