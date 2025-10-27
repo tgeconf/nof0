@@ -1,12 +1,7 @@
 "use client";
 import { useConversations } from "@/lib/api/hooks/useConversations";
 import { useSearchParams, useRouter, usePathname } from "next/navigation";
-import { useEffect, useMemo, useRef, useState } from "react";
-import {
-  getCachedTranslation,
-  setCachedTranslation,
-  simpleHash,
-} from "@/lib/translate/cache";
+import { useEffect, useMemo, useState } from "react";
 import { getModelName, getModelColor, getModelMeta } from "@/lib/model/meta";
 import { ModelLogoChip } from "@/components/shared/ModelLogo";
 // theme handled via CSS variables
@@ -53,59 +48,7 @@ export default function ModelChatPanel() {
     return qModel === "ALL" ? arr : arr.filter((r) => r.model_id === qModel);
   }, [items, qModel]);
 
-  // Prefetch translation for latest-only when content seems English
-  const needTranslate: { key: string; text: string }[] = [];
-  for (const row of list) {
-    const txt = String(row?.content || "");
-    const hasCJK = /[\u4e00-\u9fa5]/.test(txt);
-    if (!hasCJK && txt.trim()) {
-      const tkey = `${row.model_id}:${simpleHash(txt.slice(0, 4096))}`;
-      if (typeof window !== "undefined" && !getCachedTranslation(tkey)) {
-        needTranslate.push({ key: tkey, text: txt.slice(0, 8000) });
-      }
-    }
-  }
-  const processed = useRef<Set<string>>(new Set());
-  useEffect(() => {
-    if (!needTranslate.length || typeof window === "undefined") return;
-    // global disable flag if backend not configured/rate-limited
-    const g: any = window as any;
-    if (g.__translateDisabled) return;
-    let cancelled = false;
-    (async () => {
-      for (const it of needTranslate) {
-        if (cancelled) break;
-        if (processed.current.has(it.key)) continue;
-        processed.current.add(it.key);
-        try {
-          const res = await fetch("/api/translate", {
-            method: "POST",
-            headers: { "content-type": "application/json" },
-            body: JSON.stringify({ text: it.text, key: it.key }),
-          });
-          if (!res.ok) {
-            // disable further attempts in this session to avoid spamming when not configured
-            g.__translateDisabled = true;
-            break;
-          }
-          const j = await res.json();
-          if (j?.disabled) {
-            g.__translateDisabled = true;
-            break;
-          }
-          const zh = j?.translation as string | undefined;
-          if (zh) setCachedTranslation(it.key, zh);
-        } catch {
-          g.__translateDisabled = true;
-          break;
-        }
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [JSON.stringify(needTranslate.map((x) => x.key))]);
+  // Note: Translation prefetching has been removed.
 
   if (isLoading)
     return (
@@ -227,10 +170,7 @@ function ChatCard({
   const [open, setOpen] = useState(false);
   const [openHist, setOpenHist] = useState<Record<string, boolean>>({});
 
-  const tkey = `${modelId}:${simpleHash(String(content || "").slice(0, 4096))}`;
-  const translated =
-    typeof window !== "undefined" ? getCachedTranslation(tkey) : undefined;
-  const [showZh, setShowZh] = useState<boolean>(true);
+  // Translation cache and toggles removed; render content as-is
   return (
     <div>
       {/* header line: model name + timestamp (no small icon here) */}
@@ -265,7 +205,7 @@ function ChatCard({
             className={`whitespace-pre-wrap terminal-text text-xs leading-relaxed`}
             style={{ color: "var(--foreground)" }}
           >
-            {showZh && translated ? translated : content || "(no summary)"}
+            {content || "(no summary)"}
           </div>
           <button
             className={`absolute bottom-1 right-2 text-[11px] italic`}
@@ -274,15 +214,7 @@ function ChatCard({
           >
             {open ? "收起" : "点击展开"}
           </button>
-          {translated && (
-            <button
-              className={`absolute bottom-1 left-2 text-[11px]`}
-              style={{ color: "var(--muted-text)" }}
-              onClick={() => setShowZh((v) => !v)}
-            >
-              {showZh ? "显示原文" : "显示中文"}
-            </button>
-          )}
+          {/* translation toggle removed */}
         </div>
       </div>
 
