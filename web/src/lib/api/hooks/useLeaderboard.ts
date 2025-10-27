@@ -1,5 +1,6 @@
 "use client";
 import useSWR from "swr";
+import { activityAwareRefresh } from "./activityAware";
 import { endpoints, fetcher } from "../nof1";
 
 export interface LeaderboardRow {
@@ -21,7 +22,7 @@ export function useLeaderboard() {
   const { data, error, isLoading } = useSWR<LeaderboardResponse>(
     endpoints.leaderboard?.() ?? "/api/nof1/leaderboard",
     fetcher,
-    { refreshInterval: 15000 },
+    { ...activityAwareRefresh(15_000) },
   );
   return { rows: data?.leaderboard ?? [], isLoading, isError: !!error };
 }

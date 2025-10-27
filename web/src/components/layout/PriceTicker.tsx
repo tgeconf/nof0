@@ -70,7 +70,11 @@ export default function PriceTicker() {
 
 function renderItems(list: { symbol: string; price: number }[]) {
   return list.map((p) => (
-    <span key={`${p.symbol}-${Math.random()}`} className={`tabular-nums`} style={{ color: "var(--muted-text)" }}>
+    <span
+      key={`${p.symbol}-${Math.random()}`}
+      className={`tabular-nums`}
+      style={{ color: "var(--muted-text)" }}
+    >
       <b className={`mr-1`} style={{ color: "var(--foreground)" }}>
         {p.symbol}
       </b>

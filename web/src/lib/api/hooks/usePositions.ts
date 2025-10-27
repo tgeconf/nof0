@@ -1,5 +1,6 @@
 "use client";
 import useSWR from "swr";
+import { activityAwareRefresh } from "./activityAware";
 import { endpoints, fetcher } from "../nof1";
 import type { AccountTotalsRow } from "./useAccountTotals";
 
@@ -34,7 +35,7 @@ export function usePositions() {
   const { data, error, isLoading } = useSWR<{
     accountTotals: AccountTotalsRow[];
   }>(endpoints.accountTotals(), fetcher, {
-    refreshInterval: 10000,
+    ...activityAwareRefresh(10_000),
   });
 
   const positionsByModel: PositionsByModel[] = (() => {

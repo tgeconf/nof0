@@ -1,5 +1,6 @@
 "use client";
 import useSWR from "swr";
+import { activityAwareRefresh } from "./activityAware";
 import { endpoints, fetcher } from "../nof1";
 
 type PriceEntry = { symbol: string; price: number; timestamp: number };
@@ -13,7 +14,7 @@ export function useCryptoPrices() {
     endpoints.cryptoPrices(),
     fetcher,
     {
-      refreshInterval: 10000, // poll at 10s; browser cache handles in-between
+      ...activityAwareRefresh(10_000),
     },
   );
 

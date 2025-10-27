@@ -1,5 +1,6 @@
 "use client";
 import useSWR from "swr";
+import { activityAwareRefresh } from "./activityAware";
 import { endpoints, fetcher } from "../nof1";
 
 type Row = {
@@ -17,7 +18,7 @@ export function useLatestEquityMap() {
     endpoints.accountTotals(),
     fetcher,
     {
-      refreshInterval: 10000,
+      ...activityAwareRefresh(10_000),
     },
   );
   const map: Record<string, number> = {};

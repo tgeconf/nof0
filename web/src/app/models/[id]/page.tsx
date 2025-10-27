@@ -25,10 +25,22 @@ export default async function ModelDetailPage({
 
         {/* 详情分块：当前持仓 与 最近成交（纵向堆叠） */}
         <div className="space-y-3">
-          <div className="rounded-md border p-3" style={{ background: "var(--panel-bg)", borderColor: "var(--panel-border)" }}>
+          <div
+            className="rounded-md border p-3"
+            style={{
+              background: "var(--panel-bg)",
+              borderColor: "var(--panel-border)",
+            }}
+          >
             <ModelOpenPositions modelId={id} />
           </div>
-          <div className="rounded-md border p-3" style={{ background: "var(--panel-bg)", borderColor: "var(--panel-border)" }}>
+          <div
+            className="rounded-md border p-3"
+            style={{
+              background: "var(--panel-bg)",
+              borderColor: "var(--panel-border)",
+            }}
+          >
             <ModelRecentTradesTable modelId={id} />
           </div>
         </div>

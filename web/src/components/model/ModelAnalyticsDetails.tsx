@@ -3,7 +3,11 @@ import { useState } from "react";
 import { useAnalyticsMap } from "@/lib/api/hooks/useAnalyticsMap";
 import { fmtUSD } from "@/lib/utils/formatters";
 
-export default function ModelAnalyticsDetails({ modelId }: { modelId: string }) {
+export default function ModelAnalyticsDetails({
+  modelId,
+}: {
+  modelId: string;
+}) {
   const { map } = useAnalyticsMap();
   const a: any = map[modelId] || {};
   const [open, setOpen] = useState(false);
@@ -18,14 +22,26 @@ export default function ModelAnalyticsDetails({ modelId }: { modelId: string }) 
   const ls = a.longs_shorts_breakdown_table || {};
 
   return (
-    <div className="rounded-md border" style={{ background: "var(--panel-bg)", borderColor: "var(--panel-border)" }}>
+    <div
+      className="rounded-md border"
+      style={{
+        background: "var(--panel-bg)",
+        borderColor: "var(--panel-border)",
+      }}
+    >
       <div className="flex items-center justify-between px-3 py-2">
-        <div className="ui-sans text-sm font-semibold" style={{ color: "var(--foreground)" }}>
+        <div
+          className="ui-sans text-sm font-semibold"
+          style={{ color: "var(--foreground)" }}
+        >
           分析详情
         </div>
         <button
           className="ui-sans rounded border px-2 py-1 text-xs chip-btn"
-          style={{ borderColor: "var(--chip-border)", color: "var(--foreground)" }}
+          style={{
+            borderColor: "var(--chip-border)",
+            color: "var(--foreground)",
+          }}
           onClick={() => setOpen((v) => !v)}
         >
           {open ? "收起" : "展开"}
@@ -44,8 +60,16 @@ export default function ModelAnalyticsDetails({ modelId }: { modelId: string }) 
             {kpi("平均名义", fmtUSD(t.avg_size_of_trade_notional))}
             {kpi("胜率", pctFmt(w.win_rate))}
             {kpi("总手续费", fmtUSD(f.total_fees_paid))}
-            {kpiColored("最大盈利", fmtUSD(f.biggest_net_gain), f.biggest_net_gain)}
-            {kpiColored("最大亏损", fmtUSD(f.biggest_net_loss), f.biggest_net_loss)}
+            {kpiColored(
+              "最大盈利",
+              fmtUSD(f.biggest_net_gain),
+              f.biggest_net_gain,
+            )}
+            {kpiColored(
+              "最大亏损",
+              fmtUSD(f.biggest_net_loss),
+              f.biggest_net_loss,
+            )}
           </dl>
 
           {/* 单列信息：更紧凑的分组，以小标题+三列格栅呈现 */}
@@ -60,8 +84,16 @@ export default function ModelAnalyticsDetails({ modelId }: { modelId: string }) 
 
           <Subhead title="胜负分布" />
           <StatGrid>
-            {statColored("盈利单平均净盈亏", fmtUSD(w.avg_winners_net_pnl), w.avg_winners_net_pnl)}
-            {statColored("亏损单平均净盈亏", fmtUSD(w.avg_losers_net_pnl), w.avg_losers_net_pnl)}
+            {statColored(
+              "盈利单平均净盈亏",
+              fmtUSD(w.avg_winners_net_pnl),
+              w.avg_winners_net_pnl,
+            )}
+            {statColored(
+              "亏损单平均净盈亏",
+              fmtUSD(w.avg_losers_net_pnl),
+              w.avg_losers_net_pnl,
+            )}
             {stat("盈利单平均持有", minsCompact(w.avg_winners_holding_period))}
             {stat("亏损单平均持有", minsCompact(w.avg_losers_holding_period))}
             {stat("盈利单平均名义", fmtUSD(w.avg_winners_notional))}
@@ -82,15 +114,35 @@ export default function ModelAnalyticsDetails({ modelId }: { modelId: string }) 
           <StatGrid>
             {stat("调用次数", intFmt(inv.num_invocations))}
             {stat("平均间隔", minsCompact(inv.avg_invocation_break_mins))}
-            {stat("最小/最大间隔", rangeFmt(inv.min_invocation_break_mins, inv.max_invocation_break_mins))}
+            {stat(
+              "最小/最大间隔",
+              rangeFmt(
+                inv.min_invocation_break_mins,
+                inv.max_invocation_break_mins,
+              ),
+            )}
           </StatGrid>
 
           <Subhead title="多空交易拆分" />
           <StatGrid>
-            {stat("多/空交易数", `${intFmt(ls.num_long_trades)} / ${intFmt(ls.num_short_trades)}`)}
-            {statColored("多头平均净盈亏", fmtUSD(ls.avg_longs_net_pnl), ls.avg_longs_net_pnl)}
-            {statColored("空头平均净盈亏", fmtUSD(ls.avg_shorts_net_pnl), ls.avg_shorts_net_pnl)}
-            {stat("多/空平均持有", `${minsCompact(ls.avg_longs_holding_period)} / ${minsCompact(ls.avg_shorts_holding_period)}`)}
+            {stat(
+              "多/空交易数",
+              `${intFmt(ls.num_long_trades)} / ${intFmt(ls.num_short_trades)}`,
+            )}
+            {statColored(
+              "多头平均净盈亏",
+              fmtUSD(ls.avg_longs_net_pnl),
+              ls.avg_longs_net_pnl,
+            )}
+            {statColored(
+              "空头平均净盈亏",
+              fmtUSD(ls.avg_shorts_net_pnl),
+              ls.avg_shorts_net_pnl,
+            )}
+            {stat(
+              "多/空平均持有",
+              `${minsCompact(ls.avg_longs_holding_period)} / ${minsCompact(ls.avg_shorts_holding_period)}`,
+            )}
           </StatGrid>
         </div>
       )}
@@ -110,16 +162,26 @@ function Subhead({ title }: { title: string }) {
 }
 
 function StatGrid({ children }: { children: React.ReactNode }) {
-  return <dl className="grid grid-cols-2 gap-x-4 gap-y-1 md:grid-cols-3 lg:grid-cols-4">{children}</dl>;
+  return (
+    <dl className="grid grid-cols-2 gap-x-4 gap-y-1 md:grid-cols-3 lg:grid-cols-4">
+      {children}
+    </dl>
+  );
 }
 
 function kpi(label: string, value?: string) {
   return (
     <div key={label} className="flex items-baseline justify-between">
-      <dt className="ui-sans text-[11px]" style={{ color: "var(--muted-text)" }}>
+      <dt
+        className="ui-sans text-[11px]"
+        style={{ color: "var(--muted-text)" }}
+      >
         {label}
       </dt>
-      <dd className="terminal-text tabular-nums text-[12px]" style={{ color: "var(--foreground)" }}>
+      <dd
+        className="terminal-text tabular-nums text-[12px]"
+        style={{ color: "var(--foreground)" }}
+      >
         {value ?? "—"}
       </dd>
     </div>
@@ -129,7 +191,12 @@ function kpi(label: string, value?: string) {
 function kpiColored(label: string, value?: string, num?: number) {
   return (
     <div key={label} className="flex items-baseline justify-between">
-      <dt className="ui-sans text-[11px]" style={{ color: "var(--muted-text)" }}>{label}</dt>
+      <dt
+        className="ui-sans text-[11px]"
+        style={{ color: "var(--muted-text)" }}
+      >
+        {label}
+      </dt>
       <dd
         className="terminal-text tabular-nums text-[12px]"
         style={{ color: pnlColor(num) }}
@@ -143,8 +210,18 @@ function kpiColored(label: string, value?: string, num?: number) {
 function stat(label: string, value?: string) {
   return (
     <div key={label} className="flex items-baseline justify-between">
-      <dt className="ui-sans text-[11px]" style={{ color: "var(--muted-text)" }}>{label}</dt>
-      <dd className="terminal-text tabular-nums text-[12px]" style={{ color: "var(--foreground)" }}>{value ?? "—"}</dd>
+      <dt
+        className="ui-sans text-[11px]"
+        style={{ color: "var(--muted-text)" }}
+      >
+        {label}
+      </dt>
+      <dd
+        className="terminal-text tabular-nums text-[12px]"
+        style={{ color: "var(--foreground)" }}
+      >
+        {value ?? "—"}
+      </dd>
     </div>
   );
 }
@@ -152,8 +229,18 @@ function stat(label: string, value?: string) {
 function statColored(label: string, value?: string, num?: number) {
   return (
     <div key={label} className="flex items-baseline justify-between">
-      <dt className="ui-sans text-[11px]" style={{ color: "var(--muted-text)" }}>{label}</dt>
-      <dd className="terminal-text tabular-nums text-[12px]" style={{ color: pnlColor(num) }}>{value ?? "—"}</dd>
+      <dt
+        className="ui-sans text-[11px]"
+        style={{ color: "var(--muted-text)" }}
+      >
+        {label}
+      </dt>
+      <dd
+        className="terminal-text tabular-nums text-[12px]"
+        style={{ color: pnlColor(num) }}
+      >
+        {value ?? "—"}
+      </dd>
     </div>
   );
 }
@@ -204,7 +291,10 @@ function rangeFmt(a?: number, b?: number) {
 }
 
 function percentMix(s: any) {
-  const L = s.long_signal_pct, S = s.short_signal_pct, H = s.hold_signal_pct, C = s.close_signal_pct;
+  const L = s.long_signal_pct,
+    S = s.short_signal_pct,
+    H = s.hold_signal_pct,
+    C = s.close_signal_pct;
   const parts: string[] = [];
   if (L != null) parts.push(`多${L.toFixed(1)}%`);
   if (S != null) parts.push(`空${S.toFixed(1)}%`);

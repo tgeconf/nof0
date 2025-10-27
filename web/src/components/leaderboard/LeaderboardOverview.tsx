@@ -11,7 +11,11 @@ import CoinIcon from "@/components/shared/CoinIcon";
 import { fmtUSD } from "@/lib/utils/formatters";
 import { useLatestEquityMap } from "@/lib/api/hooks/useModelSnapshots";
 
-export default function LeaderboardOverview({ mode: _mode }: { mode?: "overall" | "advanced" }) {
+export default function LeaderboardOverview({
+  mode: _mode,
+}: {
+  mode?: "overall" | "advanced";
+}) {
   const [tab, setTab] = useState<"overall" | "advanced">(_mode || "overall");
   const { rows } = useLeaderboard();
   const { map: equityMap } = useLatestEquityMap();
@@ -64,7 +68,10 @@ export default function LeaderboardOverview({ mode: _mode }: { mode?: "overall" 
         <TabButton active={tab === "overall"} onClick={() => setTab("overall")}>
           总体统计
         </TabButton>
-        <TabButton active={tab === "advanced"} onClick={() => setTab("advanced")}>
+        <TabButton
+          active={tab === "advanced"}
+          onClick={() => setTab("advanced")}
+        >
           高级分析
         </TabButton>
       </div>
@@ -84,7 +91,15 @@ export default function LeaderboardOverview({ mode: _mode }: { mode?: "overall" 
   );
 }
 
-function TabButton({ active, onClick, children }: { active?: boolean; onClick?: () => void; children: React.ReactNode }) {
+function TabButton({
+  active,
+  onClick,
+  children,
+}: {
+  active?: boolean;
+  onClick?: () => void;
+  children: React.ReactNode;
+}) {
   return (
     <button
       onClick={onClick}
@@ -214,7 +229,10 @@ function Bars({ rows }: { rows: { id: string; equity: number }[] }) {
           const ICON = 16; // logo 直径
           return (
             <div key={r.id} className="flex flex-col items-center gap-1">
-              <div className="tabular-nums text-[11px]" style={{ color: "var(--foreground)" }}>
+              <div
+                className="tabular-nums text-[11px]"
+                style={{ color: "var(--foreground)" }}
+              >
                 {fmtUSD(r.equity)}
               </div>
               <div className="relative w-10" style={{ height: FULL }}>
@@ -245,12 +263,18 @@ function Bars({ rows }: { rows: { id: string; equity: number }[] }) {
                       alt=""
                       width={ICON}
                       height={ICON}
-                      style={{ objectFit: "contain", filter: "brightness(0) invert(1)" }}
+                      style={{
+                        objectFit: "contain",
+                        filter: "brightness(0) invert(1)",
+                      }}
                     />
                   </div>
                 ) : null}
               </div>
-              <div className="ui-sans text-[11px] text-center" style={{ color: "var(--muted-text)" }}>
+              <div
+                className="ui-sans text-[11px] text-center"
+                style={{ color: "var(--muted-text)" }}
+              >
                 {getModelName(r.id)}
               </div>
             </div>

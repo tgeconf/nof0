@@ -1,8 +1,46 @@
 "use client";
-import { SWRConfig } from "swr";
+import { SWRConfig, type Middleware } from "swr";
 import type { PropsWithChildren } from "react";
+import { useMemo } from "react";
+import { usePageActivity } from "@/store/usePageActivity";
+import type { ActivityAwareConfig } from "@/lib/api/hooks/activityAware";
+
+const activityAwarePolling: Middleware = (useSWRNext) => {
+  return (key, fetcher, config) => {
+    const { isActive } = usePageActivity();
+    const extended = (config ?? {}) as typeof config & ActivityAwareConfig;
+
+    if (
+      !extended ||
+      typeof extended.refreshInterval !== "number" ||
+      extended.refreshInterval <= 0 ||
+      extended.disableActivityTracking
+    ) {
+      return useSWRNext(key, fetcher, config);
+    }
+
+    const baseInterval = extended.refreshInterval;
+    const hiddenInterval =
+      extended.refreshIntervalWhenHidden != null
+        ? extended.refreshIntervalWhenHidden
+        : 0;
+
+    const appliedInterval = isActive ? baseInterval : hiddenInterval;
+    const scopedConfig =
+      config && config.refreshInterval === appliedInterval
+        ? config
+        : ({
+            ...(config ?? {}),
+            refreshInterval: appliedInterval,
+          } as typeof config);
+
+    return useSWRNext(key, fetcher, scopedConfig);
+  };
+};
 
 export default function SWRProvider({ children }: PropsWithChildren) {
+  const middlewares = useMemo(() => [activityAwarePolling], []);
+
   return (
     <SWRConfig
       value={{
@@ -15,6 +53,9 @@ export default function SWRProvider({ children }: PropsWithChildren) {
         dedupingInterval: 2_000,
         // Don’t aggressively retry; our data is mostly periodic.
         shouldRetryOnError: false,
+        refreshWhenHidden: false,
+        focusThrottleInterval: 2_000,
+        use: middlewares,
       }}
     >
       {children}

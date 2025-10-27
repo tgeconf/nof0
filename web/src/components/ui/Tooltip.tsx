@@ -58,9 +58,13 @@ export default function Tooltip({
     document.addEventListener("touchstart", onDoc, { capture: true });
     document.addEventListener("keydown", onKey);
     return () => {
-      document.removeEventListener("pointerdown", onDoc, { capture: true } as any);
+      document.removeEventListener("pointerdown", onDoc, {
+        capture: true,
+      } as any);
       document.removeEventListener("click", onDoc, { capture: true } as any);
-      document.removeEventListener("touchstart", onDoc, { capture: true } as any);
+      document.removeEventListener("touchstart", onDoc, {
+        capture: true,
+      } as any);
       document.removeEventListener("keydown", onKey);
     };
   }, []);

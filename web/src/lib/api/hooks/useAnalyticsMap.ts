@@ -1,5 +1,6 @@
 "use client";
 import useSWR from "swr";
+import { activityAwareRefresh } from "./activityAware";
 import { endpoints, fetcher } from "../nof1";
 
 export interface AnalyticsRow {
@@ -35,7 +36,7 @@ export function useAnalyticsMap() {
   const { data, error, isLoading } = useSWR<AnalyticsResponse>(
     endpoints.analytics(),
     fetcher,
-    { refreshInterval: 15000 },
+    { ...activityAwareRefresh(15_000) },
   );
   const map: Record<string, AnalyticsRow> = {};
   for (const r of data?.analytics ?? []) {

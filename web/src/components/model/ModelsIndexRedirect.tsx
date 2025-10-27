@@ -13,4 +13,3 @@ export default function ModelsIndexRedirect() {
   }, [isLoading, map, router]);
   return null;
 }
-

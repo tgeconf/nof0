@@ -1,5 +1,6 @@
 "use client";
 import useSWR from "swr";
+import { activityAwareRefresh } from "./activityAware";
 import { endpoints, fetcher } from "../nof1";
 
 type Trade = { model_id: string };
@@ -10,7 +11,7 @@ export function useTradesCountMap() {
     endpoints.trades?.() ?? "/api/nof1/trades",
     fetcher,
     {
-      refreshInterval: 15000,
+      ...activityAwareRefresh(15_000),
     },
   );
   const map: Record<string, number> = {};

@@ -1,6 +1,7 @@
 "use client";
 import useSWR from "swr";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { activityAwareRefresh } from "./activityAware";
 import { endpoints, fetcher } from "../nof1";
 import { useChartStore } from "@/store/useChartStore";
 
@@ -85,7 +86,9 @@ export function useAccountValueSeries() {
   const { data: inc, error: incErr } = useSWR<AccountTotalsResponse>(
     incKey,
     fetcher,
-    { refreshInterval: 10000 }, // Reduced from 5s to 10s to minimize Fast Origin Transfer costs
+    {
+      ...activityAwareRefresh(10_000),
+    }, // Reduced from 5s to 10s to minimize Fast Origin Transfer costs
   );
 
   // Accumulate into store

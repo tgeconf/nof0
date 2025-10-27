@@ -1,5 +1,6 @@
 "use client";
 import useSWR from "swr";
+import { activityAwareRefresh } from "./activityAware";
 import { endpoints, fetcher } from "../nof1";
 import type { RawPositionRow } from "./usePositions";
 
@@ -22,7 +23,7 @@ export function useAccountTotals(lastHourlyMarker?: number) {
     endpoints.accountTotals(lastHourlyMarker),
     fetcher,
     {
-      refreshInterval: 10000,
+      ...activityAwareRefresh(10_000),
     },
   );
 

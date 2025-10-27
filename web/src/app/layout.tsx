@@ -5,6 +5,7 @@ import "./globals.css";
 import Header from "@/components/layout/Header";
 import SWRProvider from "@/components/providers/SWRProvider";
 import ThemeProvider from "@/components/theme/ThemeProvider";
+import PageActivityProvider from "@/components/providers/PageActivityProvider";
 import { Analytics } from "@vercel/analytics/next";
 
 const geistSans = Geist({
@@ -53,6 +54,7 @@ export default function RootLayout({
         className={`${geistSans.variable} ${geistMono.variable} ${plexMono.variable} antialiased`}
       >
         <ThemeProvider />
+        <PageActivityProvider />
         <SWRProvider>
           <div className="min-h-screen">
             <Header />

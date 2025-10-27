@@ -1,5 +1,6 @@
 "use client";
 import useSWR from "swr";
+import { activityAwareRefresh } from "./activityAware";
 import { endpoints, fetcher } from "../nof1";
 
 export interface ConversationMessage {
@@ -23,7 +24,7 @@ export function useConversations() {
     endpoints.conversations(),
     fetcher,
     {
-      refreshInterval: 15000,
+      ...activityAwareRefresh(15_000),
     },
   );
   const items: ConversationItem[] = normalize(data);

@@ -1,5 +1,6 @@
 "use client";
 import useSWR from "swr";
+import { activityAwareRefresh } from "./activityAware";
 import { endpoints, fetcher } from "../nof1";
 
 export interface TradeRow {
@@ -27,7 +28,7 @@ export function useTrades() {
     endpoints.trades(),
     fetcher,
     {
-      refreshInterval: 10000,
+      ...activityAwareRefresh(10_000),
     },
   );
 

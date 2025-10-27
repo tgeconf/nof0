@@ -1,5 +1,6 @@
 "use client";
 import useSWR from "swr";
+import { activityAwareRefresh } from "./activityAware";
 import { endpoints, fetcher } from "../nof1";
 
 export interface AnalyticsResponse {
@@ -17,7 +18,7 @@ export function useAnalytics() {
     endpoints.analytics(),
     fetcher,
     {
-      refreshInterval: 15000,
+      ...activityAwareRefresh(15_000),
     },
   );
   return { data, isLoading, isError: !!error };

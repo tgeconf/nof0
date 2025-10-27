@@ -65,7 +65,10 @@ export default function LeaderboardTable({
       }}
     >
       <div className="mb-2">
-        <h2 className={`ui-sans text-sm font-semibold`} style={{ color: "var(--foreground)" }}>
+        <h2
+          className={`ui-sans text-sm font-semibold`}
+          style={{ color: "var(--foreground)" }}
+        >
           排行榜
         </h2>
       </div>
@@ -153,11 +156,11 @@ export default function LeaderboardTable({
                 ) => (
                   <tr
                     key={r.id}
-                  className={clsx("border-b")}
-                  style={{
-                    borderColor:
-                      "color-mix(in oklab, var(--panel-border) 50%, transparent)",
-                  }}
+                    className={clsx("border-b")}
+                    style={{
+                      borderColor:
+                        "color-mix(in oklab, var(--panel-border) 50%, transparent)",
+                    }}
                   >
                     <td className="py-1 pr-2 lg:pr-3">{idx + 1}</td>
                     <td className="py-1 pr-2 lg:pr-3">
@@ -195,7 +198,7 @@ export default function LeaderboardTable({
                             "py-1 pr-2 lg:pr-3 tabular-nums",
                             pnlClass(r.total_pnl),
                           )}
-                          >
+                        >
                           {renderTotalPnl(r.total_pnl)}
                         </td>
                         <td className="py-1 pr-2 lg:pr-3 tabular-nums">

@@ -10,7 +10,11 @@ export default function ModelsIndexPage() {
         <ModelsIndexRedirect />
         <div
           className="rounded-md border p-3 text-xs"
-          style={{ background: "var(--panel-bg)", borderColor: "var(--panel-border)", color: "var(--muted-text)" }}
+          style={{
+            background: "var(--panel-bg)",
+            borderColor: "var(--panel-border)",
+            color: "var(--muted-text)",
+          }}
         >
           正在为你选择第一个模型…
         </div>

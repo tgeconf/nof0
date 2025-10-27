@@ -189,7 +189,10 @@ export default function AccountValueChart() {
     // Percent mode normalization - cache base values
     if (mode === "%") {
       // Only recalculate bases if not cached
-      if (Object.keys(percentBaseRef.current).length === 0 && points.length > 0) {
+      if (
+        Object.keys(percentBaseRef.current).length === 0 &&
+        points.length > 0
+      ) {
         for (const id of ids) {
           for (const p of points) {
             const v = p[id];
@@ -483,7 +486,11 @@ export default function AccountValueChart() {
                           const s = formatValue(lastValById[m]);
                           const fs = vw < 380 ? 11 : vw < 640 ? 12 : 13;
                           const cW = Math.round(fs * 0.62);
-                          const est = s.length * cW + 16 + Math.round(endLogoSize * 0.7) + 10; // text + padding + logo gap
+                          const est =
+                            s.length * cW +
+                            16 +
+                            Math.round(endLogoSize * 0.7) +
+                            10; // text + padding + logo gap
                           if (est > maxW) maxW = est;
                         }
                         return Math.max(chartRightMargin, maxW);

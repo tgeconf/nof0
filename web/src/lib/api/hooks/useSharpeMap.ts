@@ -1,5 +1,6 @@
 "use client";
 import useSWR from "swr";
+import { activityAwareRefresh } from "./activityAware";
 import { endpoints, fetcher } from "../nof1";
 
 type TotalsRow = {
@@ -126,14 +127,14 @@ export function useSharpeMap() {
     error: e1,
     isLoading: l1,
   } = useSWR<TotalsResp>(endpoints.accountTotals(), fetcher, {
-    refreshInterval: 15000,
+    ...activityAwareRefresh(15_000),
   });
   const {
     data: trades,
     error: e2,
     isLoading: l2,
   } = useSWR<TradesResp>(endpoints.trades?.() ?? "/api/nof1/trades", fetcher, {
-    refreshInterval: 15000,
+    ...activityAwareRefresh(15_000),
   });
 
   const map: Record<string, number> = {};

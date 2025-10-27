@@ -1,5 +1,6 @@
 "use client";
 import useSWR from "swr";
+import { activityAwareRefresh } from "./activityAware";
 import { endpoints, fetcher } from "../nof1";
 
 export interface SinceInceptionRow {
@@ -19,7 +20,7 @@ export function useSinceInception() {
   const { data, error, isLoading } = useSWR<SinceInceptionResponse>(
     endpoints.sinceInceptionValues(),
     fetcher,
-    { refreshInterval: 10000 },
+    { ...activityAwareRefresh(10_000) },
   );
   return {
     data,
