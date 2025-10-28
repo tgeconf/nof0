@@ -16,8 +16,8 @@ const TTL_BY_SEGMENT: Record<string, number> = {
   positions: 10,
   conversations: 30,
   leaderboard: 60,
-  // mostly historical
-  trades: 300,
+  // time-aligned to 10s along with other live-ish endpoints
+  trades: 10,
   "since-inception-values": 600,
   analytics: 300,
 };
@@ -29,7 +29,12 @@ function cacheHeaderFor(pathParts: string[]): string {
   // For time-aligned endpoints (10s client polling), set s-maxage to match alignment
   // This ensures the first request hits origin, subsequent requests hit Edge cache
   let sMax: number;
-  if (seg === "crypto-prices" || seg === "account-totals" || seg === "positions") {
+  if (
+    seg === "crypto-prices" ||
+    seg === "account-totals" ||
+    seg === "positions" ||
+    seg === "trades"
+  ) {
     // Align CDN cache to 10s boundaries to match client-side time alignment
     sMax = 10;
   } else {

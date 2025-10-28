@@ -10,28 +10,46 @@ const activityAwarePolling: Middleware = (useSWRNext) => {
     const { isActive } = usePageActivity();
     const extended = (config ?? {}) as typeof config & ActivityAwareConfig;
 
-    if (
-      !extended ||
-      typeof extended.refreshInterval !== "number" ||
-      extended.refreshInterval <= 0 ||
-      extended.disableActivityTracking
-    ) {
+    // If activity tracking is disabled or no interval provided, pass through.
+    if (!extended || extended.disableActivityTracking) {
       return useSWRNext(key, fetcher, config);
     }
 
-    const baseInterval = extended.refreshInterval;
+    const refresh = extended.refreshInterval as
+      | number
+      | ((latestData?: unknown) => number)
+      | undefined;
+
+    if (refresh == null) {
+      return useSWRNext(key, fetcher, config);
+    }
+
     const hiddenInterval =
       extended.refreshIntervalWhenHidden != null
         ? extended.refreshIntervalWhenHidden
         : 0;
 
-    const appliedInterval = isActive ? baseInterval : hiddenInterval;
+    let appliedRefresh: typeof refresh;
+
+    if (typeof refresh === "number") {
+      // Keep legacy numeric intervals working with activity awareness.
+      if (refresh <= 0) return useSWRNext(key, fetcher, config);
+      appliedRefresh = isActive ? refresh : hiddenInterval;
+    } else if (typeof refresh === "function") {
+      // Support time-aligned function intervals. When the page is hidden,
+      // honor the configured hidden interval to throttle/disable polling.
+      appliedRefresh = isActive ? refresh : hiddenInterval;
+    } else {
+      // If refresh is neither number nor function, pass through unchanged
+      return useSWRNext(key, fetcher, config);
+    }
+
     const scopedConfig =
-      config && config.refreshInterval === appliedInterval
+      config && config.refreshInterval === appliedRefresh
         ? config
         : ({
             ...(config ?? {}),
-            refreshInterval: appliedInterval,
+            refreshInterval: appliedRefresh as typeof refresh,
           } as typeof config);
 
     return useSWRNext(key, fetcher, scopedConfig);
