@@ -6,11 +6,14 @@ export const runtime = "edge";
 const UPSTREAM = process.env.NOF1_API_BASE_URL || "https://nof1.ai/api";
 
 // Simple TTL map by first path segment. Tune to trade freshness vs. transfer cost.
+// NOTE: With time-aligned polling, s-maxage should match client alignment interval
+// to maximize cache hit rates. Most clients align to 10s boundaries.
 const TTL_BY_SEGMENT: Record<string, number> = {
-  // highly volatile
+  // highly volatile - keep browser cache short, but CDN cache at 10s for alignment
   "crypto-prices": 5,
-  // live but not tick-by-tick
-  "account-totals": 15,
+  // live but not tick-by-tick - align to 10s client polling
+  "account-totals": 10,
+  positions: 10,
   conversations: 30,
   leaderboard: 60,
   // mostly historical
@@ -22,7 +25,17 @@ const TTL_BY_SEGMENT: Record<string, number> = {
 function cacheHeaderFor(pathParts: string[]): string {
   const seg = pathParts[0] || "";
   const ttl = TTL_BY_SEGMENT[seg] ?? 30;
-  const sMax = Math.max(ttl * 2, 30);
+
+  // For time-aligned endpoints (10s client polling), set s-maxage to match alignment
+  // This ensures the first request hits origin, subsequent requests hit Edge cache
+  let sMax: number;
+  if (seg === "crypto-prices" || seg === "account-totals" || seg === "positions") {
+    // Align CDN cache to 10s boundaries to match client-side time alignment
+    sMax = 10;
+  } else {
+    sMax = Math.max(ttl * 2, 30);
+  }
+
   const swr = Math.max(ttl * 4, 60);
   // Include max-age for browsers so repeated polling hits local cache.
   return `public, max-age=${ttl}, s-maxage=${sMax}, stale-while-revalidate=${swr}`;
