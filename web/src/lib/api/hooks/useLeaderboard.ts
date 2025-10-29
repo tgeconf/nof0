@@ -22,7 +22,7 @@ export function useLeaderboard() {
   const { data, error, isLoading } = useSWR<LeaderboardResponse>(
     endpoints.leaderboard?.() ?? "/api/nof1/leaderboard",
     fetcher,
-    { ...activityAwareRefresh(15_000) },
+    { ...activityAwareRefresh(60_000, { hiddenInterval: 120_000 }) },
   );
   return { rows: data?.leaderboard ?? [], isLoading, isError: !!error };
 }

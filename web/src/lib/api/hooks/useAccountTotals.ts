@@ -82,24 +82,40 @@ export function useAccountTotals() {
   }, [lastMarker]);
 
   useEffect(() => {
-    if (typeof window === "undefined") return;
+    if (typeof window === "undefined" || typeof document === "undefined")
+      return;
     if (lastMarker != null) return;
 
-    const interval = 10_000;
+    const ACTIVE_INTERVAL = 10_000;
+    const HIDDEN_INTERVAL = 60_000;
     let cancelled = false;
     let timeout: number | undefined;
 
-    const pump = () => {
-      mutate();
+    const schedule = () => {
       if (cancelled) return;
-      timeout = window.setTimeout(pump, interval);
+      const interval =
+        document.visibilityState === "visible" ? ACTIVE_INTERVAL : HIDDEN_INTERVAL;
+      timeout = window.setTimeout(async () => {
+        try {
+          await mutate();
+        } finally {
+          schedule();
+        }
+      }, interval);
     };
 
-    timeout = window.setTimeout(pump, interval);
+    const handleVisibility = () => {
+      if (timeout) window.clearTimeout(timeout);
+      schedule();
+    };
+
+    document.addEventListener("visibilitychange", handleVisibility);
+    schedule();
 
     return () => {
       cancelled = true;
       if (timeout) window.clearTimeout(timeout);
+      document.removeEventListener("visibilitychange", handleVisibility);
     };
   }, [lastMarker, mutate]);
 

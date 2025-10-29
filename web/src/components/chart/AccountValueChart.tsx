@@ -179,6 +179,22 @@ export default function AccountValueChart() {
     }
   }, [series, shouldAnimate]);
 
+  useEffect(() => {
+    // Stop Recharts line tweening right after first render; otherwise fresh incremental points
+    // will keep replaying the animation and cause visible jumps on the latest segment.
+    if (!shouldAnimate) return;
+    if (dataRows.length < 2) return;
+    if (
+      typeof window === "undefined" ||
+      typeof window.requestAnimationFrame !== "function"
+    ) {
+      setShouldAnimate(false);
+      return;
+    }
+    const raf = window.requestAnimationFrame(() => setShouldAnimate(false));
+    return () => window.cancelAnimationFrame(raf);
+  }, [dataRows, shouldAnimate]);
+
   const { data, models } = useMemo(() => {
     let points = dataRows;
     // Filter by range

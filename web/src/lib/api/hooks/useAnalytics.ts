@@ -18,7 +18,7 @@ export function useAnalytics() {
     endpoints.analytics(),
     fetcher,
     {
-      ...activityAwareRefresh(15_000),
+      ...activityAwareRefresh(300_000, { hiddenInterval: 600_000 }),
     },
   );
   return { data, isLoading, isError: !!error };

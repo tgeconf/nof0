@@ -24,7 +24,7 @@ export function useConversations() {
     endpoints.conversations(),
     fetcher,
     {
-      ...activityAwareRefresh(15_000),
+      ...activityAwareRefresh(30_000, { hiddenInterval: 90_000 }),
     },
   );
   const items: ConversationItem[] = normalize(data);
