@@ -2,6 +2,7 @@
 import useSWR from "swr";
 import { activityAwareRefresh } from "./activityAware";
 import { endpoints, fetcher } from "../nof1";
+import { useAccountTotals } from "./useAccountTotals";
 
 type TotalsRow = {
   model_id?: string;
@@ -58,7 +59,7 @@ function modelDailyEquityFromTrades(
   const agg = new Map<string, number>(); // day -> sum pnl
   for (const t of trades) {
     if (!t || t.model_id !== id) continue;
-    const d = dayFromAny((t as any).exit_time ?? t.exit_human_time);
+    const d = dayFromAny(t.exit_time ?? t.exit_human_time);
     if (!d) continue;
     const pnl =
       Number(t.exit_closed_pnl || 0) + Number(t.entry_closed_pnl || 0);
@@ -109,26 +110,12 @@ function winsorize(arr: number[], p = 0.1) {
   return arr.map((x) => Math.min(hi, Math.max(lo, x)));
 }
 
-function sharpeRatio(excess: number[]) {
-  if (!excess || excess.length < 3) return 0;
-  const xs = winsorize(excess, 0.1);
-  const n = xs.length;
-  const mean = xs.reduce((a, b) => a + b, 0) / n;
-  const std = Math.sqrt(
-    xs.reduce((a, b) => a + Math.pow(b - mean, 2), 0) / (n - 1),
-  );
-  if (!std) return 0;
-  return mean / std; // 不年化，更贴近原站数值量级
-}
-
 export function useSharpeMap() {
   const {
     data: totals,
-    error: e1,
-    isLoading: l1,
-  } = useSWR<TotalsResp>(endpoints.accountTotals(), fetcher, {
-    ...activityAwareRefresh(15_000),
-  });
+    isLoading: totalsLoading,
+    isError: totalsError,
+  } = useAccountTotals();
   const {
     data: trades,
     error: e2,
@@ -142,7 +129,8 @@ export function useSharpeMap() {
     string,
     { n: number; mean: number; std: number; sharpe: number }
   > = {};
-  const rows = totals?.accountTotals ?? [];
+  const totalsResp = totals as TotalsResp | undefined;
+  const rows = totalsResp?.accountTotals ?? [];
   const bench = benchDailyReturns(rows);
   const arr = trades?.trades ?? [];
 
@@ -168,5 +156,10 @@ export function useSharpeMap() {
     stats[id] = { n, mean, std, sharpe: s };
   }
 
-  return { map, stats, isLoading: l1 || l2, isError: !!(e1 || e2) };
+  return {
+    map,
+    stats,
+    isLoading: totalsLoading || l2,
+    isError: !!(totalsError || e2),
+  };
 }

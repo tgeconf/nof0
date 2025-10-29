@@ -1,8 +1,6 @@
 "use client";
-import useSWR from "swr";
-import { activityAwareRefresh } from "./activityAware";
-import { endpoints, fetcher } from "../nof1";
 import type { AccountTotalsRow } from "./useAccountTotals";
+import { useAccountTotals } from "./useAccountTotals";
 
 export interface RawPositionRow {
   entry_oid: number;
@@ -31,32 +29,54 @@ export interface PositionsByModel {
   positions: Record<string, RawPositionRow>;
 }
 
+function getModelId(row: AccountTotalsRow): string {
+  return String(row.model_id ?? row.id ?? "");
+}
+
+function getTimestamp(row: AccountTotalsRow): number {
+  return typeof row.timestamp === "number" ? row.timestamp : Number(row.timestamp ?? 0);
+}
+
+function isRawPositionRow(value: unknown): value is RawPositionRow {
+  if (!value || typeof value !== "object") return false;
+  const pos = value as Record<string, unknown>;
+  return (
+    "entry_oid" in pos &&
+    "symbol" in pos &&
+    "entry_time" in pos &&
+    "quantity" in pos &&
+    "unrealized_pnl" in pos
+  );
+}
+
+function extractPositions(row: AccountTotalsRow): Record<string, RawPositionRow> {
+  const src = row.positions;
+  if (!src) return {};
+  const out: Record<string, RawPositionRow> = {};
+  for (const [symbol, value] of Object.entries(src)) {
+    if (isRawPositionRow(value)) out[symbol] = value;
+  }
+  return out;
+}
+
 export function usePositions() {
-  const { data, error, isLoading } = useSWR<{
-    accountTotals: AccountTotalsRow[];
-  }>(endpoints.accountTotals(), fetcher, {
-    ...activityAwareRefresh(10_000),
-  });
+  const { data, isLoading, isError } = useAccountTotals();
+  const rows = (data?.accountTotals ?? []) as AccountTotalsRow[];
 
   const positionsByModel: PositionsByModel[] = (() => {
-    const rows = data?.accountTotals ?? [];
-    const latestById = new Map<
-      string,
-      AccountTotalsRow & { positions?: Record<string, RawPositionRow> }
-    >();
+    const latestById = new Map<string, AccountTotalsRow>();
     for (const row of rows) {
-      const id = String((row as any).model_id ?? (row as any).id ?? "");
+      const id = getModelId(row);
       if (!id) continue;
-      const ts = Number((row as any).timestamp ?? 0);
+      const ts = getTimestamp(row);
       const prev = latestById.get(id);
-      if (!prev || Number((prev as any).timestamp ?? 0) <= ts)
-        latestById.set(id, row as any);
+      if (!prev || getTimestamp(prev) <= ts) latestById.set(id, row);
     }
     return Array.from(latestById.entries()).map(([id, row]) => ({
       id,
-      positions: (row as any).positions ?? {},
+      positions: extractPositions(row),
     }));
   })();
 
-  return { positionsByModel, isLoading, isError: !!error };
+  return { positionsByModel, isLoading, isError };
 }
