@@ -11,7 +11,6 @@ import (
 	"nof0-api/internal/handler"
 	"nof0-api/internal/svc"
 
-	"github.com/zeromicro/go-zero/core/conf"
 	"github.com/zeromicro/go-zero/rest"
 )
 
@@ -20,15 +19,14 @@ var configFile = flag.String("f", "etc/nof0.yaml", "the config file")
 func main() {
 	flag.Parse()
 
-	var c config.Config
-	conf.MustLoad(*configFile, &c)
+	cfg := config.MustLoad(*configFile)
 
-	server := rest.MustNewServer(c.RestConf)
+	server := rest.MustNewServer(cfg.RestConf)
 	defer server.Stop()
 
-	ctx := svc.NewServiceContext(c)
+	ctx := svc.NewServiceContext(*cfg)
 	handler.RegisterHandlers(server, ctx)
 
-	fmt.Printf("Starting server at %s:%d...\n", c.Host, c.Port)
+	fmt.Printf("Starting server at %s:%d...\n", cfg.Host, cfg.Port)
 	server.Start()
 }

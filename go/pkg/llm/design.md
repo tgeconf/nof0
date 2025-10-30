@@ -1,7 +1,9 @@
 
 > **目标**: 基于 OpenAI SDK + ZenMux 实现统一的 LLM 调用模块,支持多模型切换
-> ****位置**: `go/pkg/llm/`
-> ****版本**: v1.0.0 | **创建时间**: 2025-10-30
+>
+> **位置**: `go/pkg/llm/`
+>
+> **版本**: v1.0.0 | **创建时间**: 2025-10-30
 
 ---
 
@@ -62,10 +64,10 @@ go/pkg/llm/
 
 - [ ]  **添加依赖到 go.mod**
 
-  ```bash
-  go get github.com/openai/openai-go
+```bash
+go get github.com/openai/openai-go
 go get gopkg.in/yaml.v3
-  ```
+```
 
 - [ ]  **创建基础文件结构** (client.go, config.go, types.go)
 
@@ -73,8 +75,8 @@ go get gopkg.in/yaml.v3
 
 - [ ]  **定义配置结构体**
 
-  ```go
-  type Config struct {
+```go
+type Config struct {
     BaseURL    string            // ZenMux API 端点
     APIKey     string            // ZenMux API Key
     DefaultModel string          // 默认模型
@@ -91,7 +93,7 @@ type ModelConfig struct {
     MaxTokens    int     // 最大 token 数
     TopP         float64 // Top-p 采样
 }
-  ```
+```
 
 - [ ]  **实现配置加载函数**
 
@@ -103,8 +105,8 @@ type ModelConfig struct {
 
 - [ ]  **创建默认配置** `etc/llm.yaml`
 
-  ```yaml
-  base_url: "https://zenmux.ai/api/v1"
+```yaml
+base_url: "https://zenmux.ai/api/v1"
 api_key: "${ZENMUX_API_KEY}"
 default_model: "openai/gpt-5"
 timeout: 60s
@@ -129,14 +131,14 @@ models:
     model_name: "deepseek/deepseek-chat-v3.1"
     temperature: 0.7
     max_tokens: 4096
-  ```
+```
 
 #### 任务 1.3: 类型定义 (`types.go`)
 
 - [ ]  **定义请求类型**
 
-  ```go
-  type ChatRequest struct {
+```go
+type ChatRequest struct {
     Model       string          // 模型名称
     Messages    []Message       // 对话消息
     Temperature *float64        // 温度 (可选)
@@ -157,12 +159,12 @@ type ResponseFormat struct {
     Type   string      // "text" 或 "json_object"
     Schema interface{} // JSON Schema (可选)
 }
-  ```
+```
 
 - [ ]  **定义响应类型**
 
-  ```go
-  type ChatResponse struct {
+```go
+type ChatResponse struct {
     ID      string
     Model   string
     Choices []Choice
@@ -193,12 +195,12 @@ type Usage struct {
     CompletionTokens int
     TotalTokens      int
 }
-  ```
+```
 
 - [ ]  **定义流式响应类型**
 
-  ```go
-  type StreamResponse struct {
+```go
+type StreamResponse struct {
     ID      string
     Model   string
     Choices []StreamChoice
@@ -216,14 +218,14 @@ type Delta struct {
     Content   string
     ToolCalls []ToolCall
 }
-  ```
+```
 
 #### 任务 1.4: 客户端核心 (`client.go`)
 
 - [ ]  **定义 LLMClient 接口**
 
-  ```go
-  type LLMClient interface {
+```go
+type LLMClient interface {
     // 同步调用
     Chat(ctx context.Context, req *ChatRequest) (*ChatResponse, error)
     
@@ -239,18 +241,18 @@ type Delta struct {
     // 关闭客户端
     Close() error
 }
-  ```
+```
 
 - [ ]  **实现 Client 结构体**
 
-  ```go
-  type Client struct {
+```go
+type Client struct {
     config       *Config
     openaiClient *openai.Client
     logger       *Logger
     retryHandler *RetryHandler
 }
-  ```
+```
 
 - [ ]  **实现 NewClient 构造函数**
 
@@ -296,14 +298,14 @@ type Delta struct {
 
 - [ ]  **定义重试策略**
 
-  ```go
-  type RetryConfig struct {
+```go
+type RetryConfig struct {
     MaxRetries     int
     InitialBackoff time.Duration
     MaxBackoff     time.Duration
     Multiplier     float64
 }
-  ```
+```
 
 - [ ]  **实现指数退避重试**
 
@@ -323,14 +325,14 @@ type Delta struct {
 
 - [ ]  **定义日志接口**
 
-  ```go
-  type Logger interface {
+```go
+type Logger interface {
     Debug(msg string, fields ...interface{})
     Info(msg string, fields ...interface{})
     Warn(msg string, fields ...interface{})
     Error(msg string, fields ...interface{})
 }
-  ```
+```
 
 - [ ]  **实现请求日志**
 
@@ -356,15 +358,15 @@ type Delta struct {
 
 - [ ]  **实现 StreamReader**
 
-  ```go
-  type StreamReader struct {
+```go
+type StreamReader struct {
     stream <-chan StreamResponse
     err    error
 }
 
 func (r *StreamReader) Next() (*StreamResponse, error)
 func (r *StreamReader) Close() error
-  ```
+```
 
 - [ ]  **实现流式数据聚合**
 
@@ -382,15 +384,15 @@ func (r *StreamReader) Close() error
 
 - [ ]  **实现 JSON Schema 生成**
 
-  ```go
-  func GenerateSchema(v interface{}) (map[string]interface{}, error)
-  ```
+```go
+func GenerateSchema(v interface{}) (map[string]interface{}, error)
+```
 
 - [ ]  **实现结构化解析**
 
-  ```go
-  func ParseStructured(jsonStr string, target interface{}) error
-  ```
+```go
+func ParseStructured(jsonStr string, target interface{}) error
+```
 
 - [ ]  **支持常见结构**
 
@@ -408,8 +410,8 @@ func (r *StreamReader) Close() error
 
 - [ ]  **简单对话示例** (`simple_chat.go`)
 
-  ```go
-  func main() {
+```go
+func main() {
     client := llm.NewClient("etc/llm.yaml")
     
     resp, err := client.Chat(context.Background(), &llm.ChatRequest{
@@ -421,12 +423,12 @@ func (r *StreamReader) Close() error
     
     fmt.Println(resp.Choices[0].Message.Content)
 }
-  ```
+```
 
 - [ ]  **结构化输出示例** (`structured_output.go`)
 
-  ```go
-  type TradeDecision struct {
+```go
+type TradeDecision struct {
     Action     string  `json:"action"`      // BUY, SELL, HOLD
     Symbol     string  `json:"symbol"`      // BTC, ETH
     Confidence float64 `json:"confidence"`  // 0-1
@@ -444,15 +446,13 @@ func main() {
             {Role: "user", Content: "Should I buy BTC now? Price: $68000"},
         },
     }, &decision)
-    
-    fmt.Printf("Action: %s, Confidence: %.2f
-  ```
 
-", decision.Action, decision.Confidence)\
+    fmt.Printf("Action: %s, Confidence: %.2f\n", decision.Action, decision.Confidence)
 }
+```
 
-```plaintext
-- [ ] **流式响应示例** (`streaming.go`)
+- [ ]  **流式响应示例** (`streaming.go`)
+
 ```go
 func main() {
     client := llm.NewClient("etc/llm.yaml")
@@ -545,8 +545,8 @@ func main() {
 
 - 使用结构化输出获取交易决策
 
-  ```go
-  func (e *Engine) MakeDecision(ctx *TradingContext) (*Decision, error) {
+```go
+func (e *Engine) MakeDecision(ctx *TradingContext) (*Decision, error) {
     prompt := e.buildPrompt(ctx)
     
     var decision TradeDecision
@@ -560,7 +560,7 @@ func main() {
     
     return &decision, err
 }
-  ```
+```
 
 #### 任务 5.2: 配置更新
 
@@ -568,14 +568,14 @@ func main() {
 
 - 添加 LLM 配置段
 
-  ```yaml
-  llm:
+```yaml
+llm:
   base_url: "https://zenmux.ai/api/v1"
   api_key: "${ZENMUX_API_KEY}"
   default_model: "openai/gpt-5"
   timeout: 60s
   max_retries: 3
-  ```
+```
 
 - [ ]  **更新环境变量文档**
 
@@ -697,14 +697,14 @@ resp, err := client.Chat.Completions.New(ctx, openai.ChatCompletionNewParams{
 
 ### 4. 错误处理
 
-```go
-// 可重试错误
+```
+可重试错误:
 - 429 Too Many Requests (限流)
 - 500 Internal Server Error
 - 503 Service Unavailable
 - 网络超时
 
-// 不可重试错误
+不可重试错误:
 - 400 Bad Request (参数错误)
 - 401 Unauthorized (认证失败)
 - 403 Forbidden (权限不足)

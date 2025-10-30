@@ -1,7 +1,8 @@
+# Hyperliquid Market Data API Implementation
 
 > **目标**: 使用大语言模型 + 浏览器 MCP 在 `market/` 模块下完成 Hyperliquid 市场数据的全新实现
-> ****实现方式**: 干净方案,不涉及迁移,从零开始构建
-> ****参考文档**: [Hyperliquid API Docs](https://hyperliquid.gitbook.io/hyperliquid-docs)
+> **实现方式**: 干净方案,不涉及迁移,从零开始构建
+> **参考文档**: [Hyperliquid API Docs](https://hyperliquid.gitbook.io/hyperliquid-docs)
 
 ---
 
@@ -24,11 +25,8 @@ market/
 ```
 
 **验收标准**:
-
 - 目录结构清晰,职责分明
-
 - 每个文件都有明确的功能定位
-
 - 包含测试文件
 
 ---
@@ -37,7 +35,7 @@ market/
 
 ### ✅ Task 2.1: 定义核心数据结构 (`types.go`)
 
-参考现有的市场数据结构,定义以下类型:
+参考定义以下类型:
 
 ```go
 // Data - 市场数据主结构
@@ -95,12 +93,8 @@ type Kline struct {
 ```
 
 **验收标准**:
-
 - 所有字段都有清晰的注释
-
 - 数据类型正确
-
-- 结构与现有系统兼容
 
 ### ✅ Task 2.2: 定义 API 请求/响应结构
 
@@ -151,11 +145,8 @@ type AllMidsResponse map[string]string // {"BTC": "111317.5", ...}
 ```
 
 **验收标准**:
-
 - 结构与 Hyperliquid API 文档一致
-
 - JSON 标签正确
-
 - 支持所有需要的 API 端点
 
 ---
@@ -178,23 +169,15 @@ func (c *Client) doRequest(ctx context.Context, req InfoRequest, result interfac
 ```
 
 **实现要点**:
-
 - 基础 URL: `https://api.hyperliquid.xyz/info`
-
 - 使用 POST 方法
-
 - 设置合理的超时时间 (10秒)
-
 - 添加重试机制 (最多3次)
-
 - 错误处理和日志记录
 
 **验收标准**:
-
 - 能成功发送请求到 Hyperliquid API
-
 - 正确处理 HTTP 错误
-
 - 支持 context 取消
 
 ### ✅ Task 3.2: 实现 K线数据获取 (`kline.go`)
@@ -205,13 +188,9 @@ func (c *Client) GetKlines(ctx context.Context, symbol string, interval string, 
 ```
 
 **实现要点**:
-
 - 支持的时间间隔: "3m", "4h"
-
 - 自动计算 startTime 和 endTime
-
 - 将 API 响应转换为标准 Kline 结构
-
 - 按时间从旧到新排序
 
 **API 调用示例**:
@@ -230,11 +209,8 @@ POST https://api.hyperliquid.xyz/info
 ```
 
 **验收标准**:
-
 - 能获取指定数量的 K线数据
-
 - 数据格式正确
-
 - 时间戳转换准确
 
 ### ✅ Task 3.3: 实现市场信息获取 (`market_info.go`)
@@ -268,11 +244,8 @@ POST https://api.hyperliquid.xyz/info
 ```
 
 **验收标准**:
-
 - 能获取实时价格
-
 - 能获取持仓量和资金费率
-
 - 字符串到浮点数转换正确
 
 ---
@@ -287,19 +260,13 @@ func CalculateEMA(prices []float64, period int) []float64
 ```
 
 **算法**:
-
 - 第一个值使用 SMA (简单移动平均)
-
 - 后续值: EMA = (Close - EMA_prev) * multiplier + EMA_prev
-
 - multiplier = 2 / (period + 1)
 
 **验收标准**:
-
 - 计算结果准确
-
 - 处理边界情况 (数据不足)
-
 - 性能优化
 
 ### ✅ Task 4.2: 实现 MACD 计算
@@ -310,17 +277,12 @@ func CalculateMACD(prices []float64) (macd []float64, signal []float64, histogra
 ```
 
 **算法**:
-
 - MACD = EMA(12) - EMA(26)
-
 - Signal = EMA(MACD, 9)
-
 - Histogram = MACD - Signal
 
 **验收标准**:
-
 - 返回完整的 MACD、Signal、Histogram
-
 - 数据长度正确
 
 ### ✅ Task 4.3: 实现 RSI 计算
@@ -331,19 +293,13 @@ func CalculateRSI(prices []float64, period int) []float64
 ```
 
 **算法**:
-
 - 计算价格变化
-
 - 分别计算上涨和下跌的平均值
-
 - RS = 平均上涨 / 平均下跌
-
 - RSI = 100 - (100 / (1 + RS))
 
 **验收标准**:
-
 - 支持 7 期和 14 期 RSI
-
 - 处理除零情况
 
 ### ✅ Task 4.4: 实现 ATR 计算
@@ -354,15 +310,11 @@ func CalculateATR(klines []Kline, period int) []float64
 ```
 
 **算法**:
-
 - TR = max(High - Low, |High - PrevClose|, |Low - PrevClose|)
-
 - ATR = EMA(TR, period)
 
 **验收标准**:
-
 - 支持 3 期和 14 期 ATR
-
 - 正确处理第一根 K线
 
 ---
@@ -377,17 +329,12 @@ func calculatePriceChange(currentPrice, previousPrice float64) float64
 ```
 
 **实现要点**:
-
 - 1小时变化: 对比 20 根 3分钟 K线前 (约1小时)
-
 - 4小时变化: 对比 1 根 4小时 K线前
-
 - 返回百分比 (如 2.5 表示 2.5%)
 
 **验收标准**:
-
 - 计算公式正确: (current - previous) / previous * 100
-
 - 处理负数情况
 
 ### ✅ Task 5.2: 实现日内序列数据计算
@@ -398,21 +345,14 @@ func calculateIntradayData(klines []Kline) *IntradayData
 ```
 
 **实现要点**:
-
 - 基于 3分钟 K线
-
 - 取最近 10 个数据点
-
 - 计算 EMA20, MACD, RSI7, RSI14 序列
-
 - 数据从旧到新排序
 
 **验收标准**:
-
 - 所有序列长度为 10
-
 - 数据顺序正确
-
 - 指标计算准确
 
 ### ✅ Task 5.3: 实现长期数据计算
@@ -423,21 +363,14 @@ func calculateLongerTermData(klines []Kline) *LongerTermData
 ```
 
 **实现要点**:
-
 - 基于 4小时 K线
-
 - 计算 EMA20, EMA50
-
 - 计算 ATR3, ATR14
-
 - 计算当前和平均成交量
-
 - MACD 和 RSI14 序列 (最近10个)
 
 **验收标准**:
-
 - 所有指标计算正确
-
 - 平均成交量计算合理 (如最近20根K线)
 
 ### ✅ Task 5.4: 实现主入口函数
@@ -448,39 +381,24 @@ func Get(symbol string) (*Data, error)
 ```
 
 **执行流程**:
-
 1. 标准化 symbol (如 "BTC", "BTCUSDT" → "BTC")
-
 2. 获取 3分钟 K线 (40根,用于指标计算)
-
 3. 获取 4小时 K线 (60根,用于长期指标)
-
 4. 获取当前价格
-
 5. 获取市场信息 (持仓量、资金费率)
-
 6. 计算所有技术指标
-
 7. 计算价格变化
-
 8. 组装 Data 结构
 
 **错误处理**:
-
 - K线获取失败: 返回错误
-
 - 市场信息获取失败: 使用默认值 0,不中断流程
-
 - 指标计算失败: 记录日志,使用默认值
 
 **验收标准**:
-
 - 能成功返回完整的 Data 结构
-
 - 所有字段都有值
-
 - 错误处理完善
-
 - 执行时间 < 5秒
 
 ---
@@ -505,11 +423,8 @@ func NewHyperliquidProvider() MarketDataProvider
 ```
 
 **验收标准**:
-
 - 接口定义清晰
-
 - 易于扩展其他交易所
-
 - 支持依赖注入
 
 ---
@@ -519,27 +434,17 @@ func NewHyperliquidProvider() MarketDataProvider
 ### ✅ Task 7.1: 单元测试
 
 为每个核心函数编写单元测试:
-
 - `TestGetKlines`
-
 - `TestGetMarketInfo`
-
 - `TestCalculateEMA`
-
 - `TestCalculateMACD`
-
 - `TestCalculateRSI`
-
 - `TestCalculateATR`
-
 - `TestGet` (集成测试)
 
 **验收标准**:
-
 - 测试覆盖率 > 80%
-
 - 所有测试通过
-
 - 包含边界情况测试
 
 ### ✅ Task 7.2: 集成测试
@@ -553,11 +458,8 @@ func TestRealDataFetch(t *testing.T) {
 ```
 
 **验收标准**:
-
 - 能成功获取真实数据
-
 - 数据格式正确
-
 - 所有字段有值
 
 ### ✅ Task 7.3: 性能测试
@@ -569,11 +471,8 @@ func BenchmarkGet(b *testing.B) {
 ```
 
 **验收标准**:
-
 - 单次调用 < 5秒
-
 - 内存使用合理
-
 - 无内存泄漏
 
 ---
@@ -583,27 +482,18 @@ func BenchmarkGet(b *testing.B) {
 ### ✅ Task 8.1: 编写 README
 
 包含以下内容:
-
 - 模块功能说明
-
 - 使用示例
-
 - API 文档链接
-
 - 配置说明
-
 - 常见问题
 
 ### ✅ Task 8.2: 代码注释
 
 确保所有公开函数都有:
-
 - 功能说明
-
 - 参数说明
-
 - 返回值说明
-
 - 使用示例
 
 ### ✅ Task 8.3: 配置管理
@@ -619,108 +509,71 @@ type Config struct {
 ```
 
 **验收标准**:
-
 - 支持环境变量配置
-
 - 有合理的默认值
-
 - 配置验证
 
 ---
 
 ## 🎯 关键技术要点
 
-### 1. **API 频率限制**
-
+### 1. API 频率限制
 - Hyperliquid 有频率限制,建议:
+  - 添加请求间隔控制
+  - 实现请求缓存
+  - 批量获取数据
 
-    - 添加请求间隔控制
-
-    - 实现请求缓存
-
-    - 批量获取数据
-
-### 2. **数据准确性**
-
+### 2. 数据准确性
 - K线数据可能有延迟
-
 - 使用 `allMids` 获取最新价格
-
 - 注意时间戳精度 (毫秒)
 
-### 3. **错误处理**
-
+### 3. 错误处理
 - 网络超时
-
 - API 返回错误
-
 - 数据格式异常
-
 - 币种不存在
 
-### 4. **性能优化**
-
+### 4. 性能优化
 - 并发获取 3分钟和 4小时 K线
-
 - 复用 HTTP 连接
-
 - 缓存计算结果
 
 ---
 
 ## 📚 参考资源
 
-1. **Hyperliquid API 文档**:
+### 1. Hyperliquid API 文档
+- Info endpoint: <https://hyperliquid.gitbook.io/hyperliquid-docs/for-developers/api/info-endpoint>
+- Exchange endpoint: <https://hyperliquid.gitbook.io/hyperliquid-docs/for-developers/api/exchange-endpoint>
 
-    - Info endpoint: <https://hyperliquid.gitbook.io/hyperliquid-docs/for-developers/api/info-endpoint>
+### 2. 技术指标算法
+- EMA: <https://www.investopedia.com/terms/e/ema.asp>
+- MACD: <https://www.investopedia.com/terms/m/macd.asp>
+- RSI: <https://www.investopedia.com/terms/r/rsi.asp>
+- ATR: <https://www.investopedia.com/terms/a/atr.asp>
 
-    - Exchange endpoint: <https://hyperliquid.gitbook.io/hyperliquid-docs/for-developers/api/exchange-endpoint>
-
-2. **技术指标算法**:
-
-    - EMA: <https://www.investopedia.com/terms/e/ema.asp>
-
-    - MACD: <https://www.investopedia.com/terms/m/macd.asp>
-
-    - RSI: <https://www.investopedia.com/terms/r/rsi.asp>
-
-    - ATR: <https://www.investopedia.com/terms/a/atr.asp>
-
-3. **Go 技术栈**:
-
-    - net/http 标准库
-
-    - encoding/json
-
-    - context 包
+### 3. Go 技术栈
+- net/http 标准库
+- encoding/json
+- context 包
 
 ---
 
 ## ✅ 验收清单
 
 完成以下所有项即可认为任务完成:
-
-- [ ]  所有代码文件创建完成
-
-- [ ]  所有核心函数实现完成
-
-- [ ]  单元测试通过
-
-- [ ]  集成测试通过
-
-- [ ]  性能测试达标
-
-- [ ]  代码注释完整
-
-- [ ]  README 文档完成
-
-- [ ]  能成功获取 BTC, ETH, SOL 等主流币种数据
-
-- [ ]  所有技术指标计算准确
-
-- [ ]  错误处理完善
-
-- [ ]  代码符合 Go 最佳实践
+- [ ] 所有代码文件创建完成
+- [ ] 所有核心函数实现完成
+- [ ] 单元测试通过
+- [ ] 集成测试通过
+- [ ] 性能测试达标
+- [ ] 代码注释完整
+- [ ] README 文档完成
+- [ ] 能成功获取 BTC, ETH, SOL 等主流币种数据
+- [ ] 所有技术指标计算准确
+- [ ] 错误处理完善
+- [ ] 代码符合 Go 最佳实践
 
 ---
 
@@ -775,17 +628,10 @@ func main() {
 ## 💡 给大语言模型的提示
 
 在实现过程中,请注意:
-
 1. **优先实现核心功能**: 先完成基础的 API 调用和数据获取,再实现技术指标计算
-
 2. **测试驱动开发**: 每完成一个函数就编写对应的测试
-
 3. **错误处理优先**: 确保所有可能的错误都被妥善处理
-
 4. **代码可读性**: 使用清晰的变量名和函数名,添加必要的注释
-
 5. **性能考虑**: 注意避免不必要的重复计算和 API 调用
 
-6. **参考现有实现**: 可以参考 Binance 版本的实现逻辑,但不要直接复制代码
-
-祝实现顺利! 🎉
+祝实现顺利!
