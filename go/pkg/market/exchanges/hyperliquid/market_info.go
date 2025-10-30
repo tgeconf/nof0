@@ -3,6 +3,7 @@ package hyperliquid
 import (
 	"context"
 	"fmt"
+	"math"
 	"strconv"
 	"strings"
 )
@@ -57,12 +58,15 @@ func (c *Client) GetMarketInfo(ctx context.Context, symbol string) (*MarketInfo,
 	if err != nil {
 		return nil, fmt.Errorf("hyperliquid: parse mark price: %w", err)
 	}
-	mid := mark
-	if ctxData.MidPx != "" {
-		mid, err = parseFloat(ctxData.MidPx)
-		if err != nil {
-			return nil, fmt.Errorf("hyperliquid: parse mid price: %w", err)
-		}
+	if math.IsNaN(mark) {
+		return nil, fmt.Errorf("hyperliquid: missing mark price for %s", canonical)
+	}
+	mid, err := parseFloat(ctxData.MidPx)
+	if err != nil {
+		return nil, fmt.Errorf("hyperliquid: parse mid price: %w", err)
+	}
+	if math.IsNaN(mid) {
+		mid = mark
 	}
 	funding, err := parseFloat(ctxData.Funding)
 	if err != nil {
@@ -72,11 +76,20 @@ func (c *Client) GetMarketInfo(ctx context.Context, symbol string) (*MarketInfo,
 	if err != nil {
 		return nil, fmt.Errorf("hyperliquid: parse open interest: %w", err)
 	}
+	if math.IsNaN(oi) {
+		oi = 0
+	}
 	dayVolume, err := parseFloat(ctxData.DayBaseVlm)
 	if err != nil {
+		return nil, fmt.Errorf("hyperliquid: parse dayBase volume: %w", err)
+	}
+	if math.IsNaN(dayVolume) {
 		dayVolume, err = parseFloat(ctxData.DayNtlVlm)
 		if err != nil {
-			return nil, fmt.Errorf("hyperliquid: parse day volume: %w", err)
+			return nil, fmt.Errorf("hyperliquid: parse dayNotional volume: %w", err)
+		}
+		if math.IsNaN(dayVolume) {
+			dayVolume = 0
 		}
 	}
 
@@ -96,7 +109,7 @@ func (c *Client) resolveSymbol(ctx context.Context, symbol string) (string, erro
 
 func parseFloat(val string) (float64, error) {
 	if val == "" {
-		return 0, fmt.Errorf("empty string")
+		return math.NaN(), nil
 	}
 	return strconv.ParseFloat(val, 64)
 }

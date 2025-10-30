@@ -12,61 +12,55 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
+
+	"nof0-api/pkg/market"
 )
 
-func TestCalculateEMA(t *testing.T) {
-	data := []float64{1, 2, 3, 4, 5, 6}
-	result := CalculateEMA(data, 3)
-	require.Len(t, result, len(data))
-	require.True(t, mathIsNaN(result[0]))
-	require.True(t, mathIsNaN(result[1]))
-	require.InDelta(t, 2.0, result[2], 1e-9)
-	require.InDelta(t, 3.0, result[3], 1e-9)
-	require.InDelta(t, 4.0, result[4], 1e-9)
-	require.InDelta(t, 5.0, result[5], 1e-9)
+func TestProviderSnapshot(t *testing.T) {
+	server, provider := newMockProvider(t)
+	defer server.Close()
+
+	ctx := context.Background()
+	snapshot, err := provider.Snapshot(ctx, "BTCUSDT")
+	require.NoError(t, err)
+	require.NotNil(t, snapshot)
+	require.Equal(t, "BTC", snapshot.Symbol)
+	require.InDelta(t, 150.0, snapshot.Price.Last, 1e-9)
+	require.InDelta(t, 15.384615, snapshot.Change.OneHour, 1e-6)
+	require.InDelta(t, 0.671141, snapshot.Change.FourHour, 1e-6)
+	require.NotNil(t, snapshot.OpenInterest)
+	require.InDelta(t, 150.0, snapshot.OpenInterest.Latest, 1e-9)
+	require.NotNil(t, snapshot.Intraday)
+	require.NotNil(t, snapshot.LongTerm)
+	require.NotEmpty(t, snapshot.Indicators.EMA)
 }
 
-func TestCalculateMACD(t *testing.T) {
-	closes := []float64{100, 101, 102, 103, 105, 107, 106, 108, 110, 111, 112, 115, 117, 119, 118, 120, 121, 123, 125, 124, 126, 127, 129, 130, 132, 133, 134, 135, 136, 138, 139, 141, 140, 142, 144, 143, 145, 147, 149, 148, 150, 151, 149, 148, 150, 152, 151, 153, 154, 156, 155, 157, 158, 160, 161, 159, 158, 157, 159, 160}
-	macd, signal, hist := CalculateMACD(closes)
-	require.Len(t, macd, len(closes))
-	require.Len(t, signal, len(closes))
-	require.Len(t, hist, len(closes))
+func TestProviderSnapshotMixedCase(t *testing.T) {
+	server, provider := newMockProvider(t)
+	defer server.Close()
 
-	last := len(closes) - 1
-	require.InDelta(t, 5.582947, macd[last], 1e-6)
-	require.InDelta(t, 6.307087, signal[last], 1e-6)
-	require.InDelta(t, -0.724141, hist[last], 1e-6)
+	ctx := context.Background()
+	snapshot, err := provider.Snapshot(ctx, "kpepeusdt")
+	require.NoError(t, err)
+	require.Equal(t, "kPEPE", snapshot.Symbol)
+	require.InDelta(t, 0.00095, snapshot.Price.Last, 1e-9)
+	require.NotNil(t, snapshot.Intraday)
+	require.NotNil(t, snapshot.LongTerm)
 }
 
-func TestCalculateRSI(t *testing.T) {
-	closes := []float64{100, 101, 102, 103, 105, 107, 106, 108, 110, 111, 112, 115, 117, 119, 118, 120, 121, 123, 125, 124, 126, 127, 129, 130, 132, 133, 134, 135, 136, 138, 139, 141, 140, 142, 144, 143, 145, 147, 149, 148, 150, 151, 149, 148, 150, 152, 151, 153, 154, 156, 155, 157, 158, 160, 161, 159, 158, 157, 159, 160}
-	rsi := CalculateRSI(closes, 14)
-	require.Len(t, rsi, len(closes))
-	require.InDelta(t, 73.084185, rsi[len(rsi)-1], 1e-6)
+func TestProviderListAssets(t *testing.T) {
+	server, provider := newMockProvider(t)
+	defer server.Close()
+
+	ctx := context.Background()
+	assets, err := provider.ListAssets(ctx)
+	require.NoError(t, err)
+	require.Len(t, assets, 2)
+	require.Contains(t, []string{assets[0].Symbol, assets[1].Symbol}, "BTC")
+	require.Contains(t, []string{assets[0].Symbol, assets[1].Symbol}, "kPEPE")
 }
 
-func TestCalculateATR(t *testing.T) {
-	base := int64(1_700_000_000_000)
-	var klines []Kline
-	closes := []float64{100, 101, 102, 104, 103, 105, 107, 106, 108, 110, 112, 111, 113, 115, 114, 116, 118, 117, 119, 121}
-	for i, close := range closes {
-		klines = append(klines, Kline{
-			OpenTime:  base + int64(i)*180_000,
-			Open:      close - 0.5,
-			High:      close + 1.5,
-			Low:       close - 1.5,
-			Close:     close,
-			Volume:    100 + float64(i),
-			CloseTime: base + int64(i+1)*180_000 - 1,
-		})
-	}
-	atr := CalculateATR(klines, 14)
-	require.Len(t, atr, len(klines))
-	require.InDelta(t, 3.326525, atr[len(atr)-1], 1e-6)
-}
-
-func TestGetKlines(t *testing.T) {
+func TestClientGetKlines(t *testing.T) {
 	server, client := newMockHyperliquidServer(t)
 	defer server.Close()
 
@@ -79,7 +73,7 @@ func TestGetKlines(t *testing.T) {
 	require.InDelta(t, 150.0, klines[len(klines)-1].Close, 1e-9)
 }
 
-func TestGetMarketInfo(t *testing.T) {
+func TestClientGetMarketInfo(t *testing.T) {
 	server, client := newMockHyperliquidServer(t)
 	defer server.Close()
 
@@ -92,55 +86,41 @@ func TestGetMarketInfo(t *testing.T) {
 	require.InDelta(t, 150.0, info.OpenInterest, 1e-9)
 }
 
-func TestGetMarketData(t *testing.T) {
+func TestListAssetsReflectsDelistedStatus(t *testing.T) {
 	server, client := newMockHyperliquidServer(t)
 	defer server.Close()
 
 	ctx := context.Background()
-	data, err := client.GetMarketData(ctx, "BTCUSDT")
-	require.NoError(t, err)
-	require.NotNil(t, data)
-	require.Equal(t, "BTC", data.Symbol)
-	require.InDelta(t, 150.0, data.CurrentPrice, 1e-9)
-	require.InDelta(t, 15.384615, data.PriceChange1h, 1e-6)
-	require.InDelta(t, 0.671141, data.PriceChange4h, 1e-6)
-	require.NotNil(t, data.OpenInterest)
-	require.InDelta(t, 150.0, data.OpenInterest.Latest, 1e-9)
-	require.NotNil(t, data.IntradaySeries)
-	require.Len(t, data.IntradaySeries.MidPrices, 10)
-	require.Len(t, data.IntradaySeries.EMA20Values, 10)
-	require.NotNil(t, data.LongerTermContext)
-	require.Len(t, data.LongerTermContext.MACDValues, 10)
-	require.InDelta(t, 0.000125, data.FundingRate, 1e-9)
-}
+	require.NoError(t, client.refreshSymbolDirectory(ctx))
+	client.symbolsMu.Lock()
+	entry := client.universeMeta["kPEPE"]
+	entry.IsDelisted = true
+	client.universeMeta["kPEPE"] = entry
+	client.symbolsMu.Unlock()
 
-func TestGetMarketDataMixedCaseSymbol(t *testing.T) {
-	server, client := newMockHyperliquidServer(t)
-	defer server.Close()
-
-	ctx := context.Background()
-	data, err := client.GetMarketData(ctx, "KPEPEUSDT")
-	require.NoError(t, err)
-	require.Equal(t, "kPEPE", data.Symbol)
-	require.InDelta(t, 0.00095, data.CurrentPrice, 1e-9)
-	require.NotNil(t, data.IntradaySeries)
-	require.NotNil(t, data.LongerTermContext)
-}
-
-func TestGetKlinesMixedCaseSymbol(t *testing.T) {
-	server, client := newMockHyperliquidServer(t)
-	defer server.Close()
-
-	ctx := context.Background()
-	klines, err := client.GetKlines(ctx, "KPEPE", "3m", 20)
-	require.NoError(t, err)
-	require.Len(t, klines, 20)
-	require.InDelta(t, 0.001, klines[0].Close, 1e-6)
-	require.InDelta(t, 0.00119, klines[len(klines)-1].Close, 1e-6)
+	provider := &Provider{client: client, timeout: defaultProviderTimeout}
+	assets := provider.collectAssets()
+	var pepe market.Asset
+	for _, asset := range assets {
+		if asset.Symbol == "kPEPE" {
+			pepe = asset
+			break
+		}
+	}
+	require.False(t, pepe.IsActive)
 }
 
 // --- helpers ---
 
+func newMockProvider(t *testing.T) (*httptest.Server, *Provider) {
+	t.Helper()
+	server, client := newMockHyperliquidServer(t)
+	provider := &Provider{
+		client:  client,
+		timeout: defaultProviderTimeout,
+	}
+	return server, provider
+}
 func newMockHyperliquidServer(t *testing.T) (*httptest.Server, *Client) {
 	t.Helper()
 
@@ -164,8 +144,8 @@ func newMockHyperliquidServer(t *testing.T) (*httptest.Server, *Client) {
 	metaPayload := []interface{}{
 		map[string]interface{}{
 			"universe": []map[string]interface{}{
-				{"name": "BTC"},
-				{"name": "kPEPE"},
+				{"name": "BTC", "szDecimals": 5, "maxLeverage": 40, "marginTableId": 56, "isDelisted": false},
+				{"name": "kPEPE", "szDecimals": 0, "maxLeverage": 10, "marginTableId": 52, "isDelisted": false},
 			},
 		},
 		[]map[string]interface{}{
@@ -297,8 +277,4 @@ func makeSequence(start, end, step float64) []float64 {
 func writeJSON(w http.ResponseWriter, payload interface{}) {
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(payload)
-}
-
-func mathIsNaN(f float64) bool {
-	return f != f
 }

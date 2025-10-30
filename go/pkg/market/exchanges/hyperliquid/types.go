@@ -5,48 +5,6 @@ import (
 	"fmt"
 )
 
-// Data represents the aggregated market snapshot returned by Hyperliquid.
-type Data struct {
-	Symbol            string          // Trading symbol, e.g. "BTC"
-	CurrentPrice      float64         // Latest traded price
-	PriceChange1h     float64         // Percentage change over the past hour
-	PriceChange4h     float64         // Percentage change over the past 4 hours
-	CurrentEMA20      float64         // Latest 20-period EMA value
-	CurrentMACD       float64         // Latest MACD value
-	CurrentRSI7       float64         // Latest 7-period RSI
-	OpenInterest      *OIData         // Open interest metrics
-	FundingRate       float64         // Funding rate percentage
-	IntradaySeries    *IntradayData   // Recent intraday series based on 3m candles
-	LongerTermContext *LongerTermData // Longer-term context based on 4h candles
-}
-
-// OIData captures open interest statistics.
-type OIData struct {
-	Latest  float64 // Latest reported open interest
-	Average float64 // Averaged open interest over the selected lookback
-}
-
-// IntradayData groups short-term series derived from 3m candles.
-type IntradayData struct {
-	MidPrices   []float64 // Closing price series (oldest to newest)
-	EMA20Values []float64 // 20-period EMA series
-	MACDValues  []float64 // MACD values
-	RSI7Values  []float64 // 7-period RSI values
-	RSI14Values []float64 // 14-period RSI values
-}
-
-// LongerTermData holds indicators computed from 4h candles.
-type LongerTermData struct {
-	EMA20         float64   // 20-period EMA
-	EMA50         float64   // 50-period EMA
-	ATR3          float64   // 3-period ATR
-	ATR14         float64   // 14-period ATR
-	CurrentVolume float64   // Latest candle volume
-	AverageVolume float64   // Average volume across recent candles
-	MACDValues    []float64 // Recent MACD values (oldest to newest)
-	RSI14Values   []float64 // Recent RSI14 values (oldest to newest)
-}
-
 // Kline represents a single OHLCV candlestick.
 type Kline struct {
 	OpenTime  int64   // Open time in milliseconds
@@ -93,7 +51,12 @@ type MetaAndAssetCtxsResponse struct {
 
 // UniverseEntry enumerates tradable assets on Hyperliquid.
 type UniverseEntry struct {
-	Name string `json:"name"`
+	Name          string  `json:"name"`
+	SzDecimals    int     `json:"szDecimals"`
+	MaxLeverage   float64 `json:"maxLeverage"`
+	MarginTableID int     `json:"marginTableId"`
+	IsDelisted    bool    `json:"isDelisted"`
+	OnlyIsolated  bool    `json:"onlyIsolated"`
 }
 
 // AssetCtx holds per-symbol market context such as funding and open interest.

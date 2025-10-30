@@ -1,11 +1,9 @@
-package hyperliquid
+package indicators
 
-import (
-	"math"
-)
+import "math"
 
-// CalculateEMA produces the exponential moving average for the supplied prices.
-func CalculateEMA(prices []float64, period int) []float64 {
+// EMA produces the exponential moving average for the supplied prices.
+func EMA(prices []float64, period int) []float64 {
 	if period <= 0 || len(prices) == 0 {
 		return []float64{}
 	}
@@ -55,13 +53,13 @@ func CalculateEMA(prices []float64, period int) []float64 {
 	return result
 }
 
-// CalculateMACD returns MACD, signal, and histogram series.
-func CalculateMACD(prices []float64) ([]float64, []float64, []float64) {
+// MACD returns MACD, signal, and histogram series.
+func MACD(prices []float64) ([]float64, []float64, []float64) {
 	if len(prices) == 0 {
 		return []float64{}, []float64{}, []float64{}
 	}
-	ema12 := CalculateEMA(prices, 12)
-	ema26 := CalculateEMA(prices, 26)
+	ema12 := EMA(prices, 12)
+	ema26 := EMA(prices, 26)
 
 	macd := make([]float64, len(prices))
 	for i := range prices {
@@ -72,7 +70,7 @@ func CalculateMACD(prices []float64) ([]float64, []float64, []float64) {
 		}
 	}
 
-	signal := CalculateEMA(macd, 9)
+	signal := EMA(macd, 9)
 	hist := make([]float64, len(prices))
 	for i := range hist {
 		if math.IsNaN(macd[i]) || math.IsNaN(signal[i]) {
@@ -84,8 +82,8 @@ func CalculateMACD(prices []float64) ([]float64, []float64, []float64) {
 	return macd, signal, hist
 }
 
-// CalculateRSI computes the Relative Strength Index across the supplied prices.
-func CalculateRSI(prices []float64, period int) []float64 {
+// RSI computes the Relative Strength Index across the supplied prices.
+func RSI(prices []float64, period int) []float64 {
 	if period <= 0 || len(prices) == 0 {
 		return []float64{}
 	}
@@ -125,8 +123,8 @@ func CalculateRSI(prices []float64, period int) []float64 {
 	return rsi
 }
 
-// CalculateATR computes the Average True Range across the Kline series.
-func CalculateATR(klines []Kline, period int) []float64 {
+// ATR computes the Average True Range across the Kline series.
+func ATR(klines []Kline, period int) []float64 {
 	if period <= 0 || len(klines) == 0 {
 		return []float64{}
 	}
@@ -141,7 +139,14 @@ func CalculateATR(klines []Kline, period int) []float64 {
 		lowClose := math.Abs(klines[i].Low - klines[i-1].Close)
 		tr[i] = math.Max(highLow, math.Max(highClose, lowClose))
 	}
-	return CalculateEMA(tr, period)
+	return EMA(tr, period)
+}
+
+// Kline represents OHLCV input for ATR calculations.
+type Kline struct {
+	High  float64
+	Low   float64
+	Close float64
 }
 
 func computeRSI(avgGain, avgLoss float64) float64 {

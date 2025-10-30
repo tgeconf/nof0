@@ -34,6 +34,7 @@ type Client struct {
 	symbolsMu        sync.RWMutex
 	symbolIndex      map[string]string
 	assetCtxBySymbol map[string]AssetCtx
+	universeMeta     map[string]UniverseEntry
 }
 
 // Option configures a new Client.
@@ -192,6 +193,7 @@ func (c *Client) refreshSymbolDirectory(ctx context.Context) error {
 
 	index := make(map[string]string, len(payload.Universe))
 	assetCtx := make(map[string]AssetCtx, len(payload.AssetCtxs))
+	universe := make(map[string]UniverseEntry, len(payload.Universe))
 	for i, entry := range payload.Universe {
 		canonical := strings.TrimSpace(entry.Name)
 		if canonical == "" {
@@ -205,11 +207,13 @@ func (c *Client) refreshSymbolDirectory(ctx context.Context) error {
 		if i < len(payload.AssetCtxs) {
 			assetCtx[canonical] = payload.AssetCtxs[i]
 		}
+		universe[canonical] = entry
 	}
 
 	c.symbolsMu.Lock()
 	c.symbolIndex = index
 	c.assetCtxBySymbol = assetCtx
+	c.universeMeta = universe
 	c.symbolsMu.Unlock()
 	return nil
 }

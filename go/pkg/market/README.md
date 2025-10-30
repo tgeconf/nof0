@@ -1,17 +1,27 @@
 # 市场数据
 
-该模块提供统一的市场数据接口, 当前实现包含 Hyperliquid 交易所的行情聚合。
+该模块提供统一的市场数据抽象, 当前包含以下子模块:
 
-- `hyperliquid/`: Hyperliquid 市场数据实现, 包含 HTTP 客户端、类型定义、指标计算以及数据聚合逻辑。
-- `interface.go`: 市场数据提供者接口定义, 暴露 `MarketDataProvider` 以及 `NewHyperliquidProvider` 构造函数。
+- `provider.go`: 定义跨交易所通用的 `Provider` 接口、`Snapshot` 结构体等核心类型。
+- `indicators/`: 交易所无关的技术指标实现 (EMA/MACD/RSI/ATR 等)。
+- `exchanges/hyperliquid/`: Hyperliquid 适配器, 负责调用官方 API 并组装为标准 `Snapshot`。
 
 用法示例:
 
 ```go
-provider := market.NewHyperliquidProvider()
-data, err := provider.Get("BTC")
+import (
+    "context"
+    "log"
+
+    "nof0-api/pkg/market/exchanges/hyperliquid"
+)
+
+ctx := context.Background()
+provider := hyperliquid.NewProvider()
+
+snapshot, err := provider.Snapshot(ctx, "BTC")
 if err != nil {
     log.Fatal(err)
 }
-fmt.Println(data.CurrentPrice)
+fmt.Printf("price=%f 1h-change=%f%%\n", snapshot.Price.Last, snapshot.Change.OneHour)
 ```
