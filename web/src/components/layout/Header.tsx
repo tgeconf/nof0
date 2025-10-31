@@ -113,6 +113,30 @@ export function Header() {
                 <path d="M18.244 2H21.5l-7.5 8.57L23 22h-6.555l-5.12-6.622L5.38 22H2.12l8.08-9.236L2 2h6.69l4.64 6.02L18.244 2zm-2.296 18h1.82L8.16 4H6.25l9.698 16z" />
               </svg>
             </a>
+            {/* Telegram 群 */}
+            <a
+              href="https://t.me/nof0_ai"
+              target="_blank"
+              rel="noopener noreferrer"
+              aria-label="Join Telegram group"
+              className="inline-flex items-center justify-center w-7 h-7 rounded border chip-btn"
+              style={{
+                borderColor: "var(--chip-border)",
+                color: "var(--btn-inactive-fg)",
+              }}
+              title="Join Telegram"
+            >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                viewBox="0 0 24 24"
+                width="16"
+                height="16"
+                fill="currentColor"
+                aria-hidden="true"
+              >
+                <path d="M21.04 3.16 3.45 10.2c-1.21.48-1.2 1.16-.22 1.46l4.5 1.4 10.43-6.6c.5-.3.96-.14.58.18l-8.45 7.5-.32 4.66c.47 0 .68-.22.93-.47l2.24-2.17 4.67 3.37c.85.47 1.45.23 1.66-.78L22.7 4.7c.3-1.21-.46-1.76-1.66-1.54Z" />
+              </svg>
+            </a>
           </div>
           <div className="ml-2 hidden sm:flex items-center gap-1 text-[11px]">
             <div
