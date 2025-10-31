@@ -1,0 +1,23 @@
+base_url: "https://zenmux.ai/api/v1"
+api_key: "${ZENMUX_API_KEY}"
+default_model: "gpt-5"
+timeout: "60s"
+max_retries: 3
+log_level: "info"
+
+models:
+  gpt-5:
+    provider: "openai"
+    model_name: "openai/gpt-5"
+    temperature: 0.7
+    max_tokens: 4096
+  claude-sonnet-4.5:
+    provider: "anthropic"
+    model_name: "anthropic/claude-sonnet-4.5"
+    temperature: 0.7
+    max_tokens: 4096
+  deepseek-chat:
+    provider: "deepseek"
+    model_name: "deepseek/deepseek-chat-v3.1"
+    temperature: 0.6
+    max_tokens: 4096

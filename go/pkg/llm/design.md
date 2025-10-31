@@ -1,4 +1,3 @@
-
 > **目标**: 基于 OpenAI SDK + ZenMux 实现统一的 LLM 调用模块,支持多模型切换
 >
 > **位置**: `go/pkg/llm/`
@@ -13,7 +12,7 @@
 
 - ✅ 通过 OpenAI SDK 统一调用多个 LLM 提供商 (via ZenMux)
 
-- ✅ 支持流式和非流式响应
+- ✅ 支持非流式响应
 
 - ✅ 支持结构化 JSON 输出 (JSON Mode / Structured Output)
 
@@ -43,12 +42,10 @@ go/pkg/llm/
 ├── provider.go               # 提供商配置
 ├── retry.go                  # 重试机制
 ├── logger.go                 # 日志记录器
-├── stream.go                 # 流式响应处理
 ├── structured.go             # 结构化输出支持
 ├── examples/                 # 使用示例
 │   ├── simple_chat.go        # 简单对话示例
 │   ├── structured_output.go  # 结构化输出示例
-│   ├── streaming.go          # 流式响应示例
 └── client_test.go            # 单元测试
 ```
 
@@ -77,21 +74,21 @@ go get gopkg.in/yaml.v3
 
 ```go
 type Config struct {
-    BaseURL    string            // ZenMux API 端点
-    APIKey     string            // ZenMux API Key
-    DefaultModel string          // 默认模型
-    Timeout    time.Duration     // 请求超时
-    MaxRetries int               // 最大重试次数
-    LogLevel   string            // 日志级别
-    Models     map[string]ModelConfig // 模型配置
+BaseURL    string   // ZenMux API 端点
+APIKey     string   // ZenMux API Key
+DefaultModel string // 默认模型
+Timeout    time.Duration // 请求超时
+MaxRetries int           // 最大重试次数
+LogLevel   string        // 日志级别
+Models     map[string]ModelConfig // 模型配置
 }
 
 type ModelConfig struct {
-    Provider     string  // 提供商 (openai, anthropic, etc.)
-    ModelName    string  // 模型名称 (gpt-5, claude-sonnet-4.5)
-    Temperature  float64 // 温度参数
-    MaxTokens    int     // 最大 token 数
-    TopP         float64 // Top-p 采样
+Provider     string  // 提供商 (openai, anthropic, etc.)
+ModelName    string  // 模型名称 (gpt-5, claude-sonnet-4.5)
+Temperature  float64 // 温度参数
+MaxTokens    int     // 最大 token 数
+TopP         float64 // Top-p 采样
 }
 ```
 
@@ -119,13 +116,13 @@ models:
     model_name: "openai/gpt-5"
     temperature: 0.7
     max_tokens: 4096
-  
+
   claude-sonnet-4.5:
     provider: "anthropic"
     model_name: "anthropic/claude-sonnet-4.5"
     temperature: 0.7
     max_tokens: 4096
-  
+
   deepseek-chat:
     provider: "deepseek"
     model_name: "deepseek/deepseek-chat-v3.1"
@@ -139,25 +136,25 @@ models:
 
 ```go
 type ChatRequest struct {
-    Model       string          // 模型名称
-    Messages    []Message       // 对话消息
-    Temperature *float64        // 温度 (可选)
-    MaxTokens   *int            // 最大 token (可选)
-    TopP        *float64        // Top-p (可选)
-    Stream      bool            // 是否流式
-    ResponseFormat *ResponseFormat // 响应格式 (JSON Mode)
+Model       string    // 模型名称
+Messages    []Message // 对话消息
+Temperature *float64 // 温度 (可选)
+MaxTokens   *int     // 最大 token (可选)
+TopP        *float64 // Top-p (可选)
+Stream      bool               // 是否流式
+ResponseFormat *ResponseFormat // 响应格式 (JSON Mode)
 }
 
 type Message struct {
-    Role    string // system, user, assistant, tool
-    Content string // 消息内容
-    Name    string // 工具名称 (tool role)
-    ToolCallID string // 工具调用 ID
+Role    string // system, user, assistant, tool
+Content string // 消息内容
+Name    string // 工具名称 (tool role)
+ToolCallID string // 工具调用 ID
 }
 
 type ResponseFormat struct {
-    Type   string      // "text" 或 "json_object"
-    Schema interface{} // JSON Schema (可选)
+Type   string // "text" 或 "json_object"
+Schema interface{} // JSON Schema (可选)
 }
 ```
 
@@ -165,35 +162,35 @@ type ResponseFormat struct {
 
 ```go
 type ChatResponse struct {
-    ID      string
-    Model   string
-    Choices []Choice
-    Usage   Usage
-    Created int64
+ID      string
+Model   string
+Choices []Choice
+Usage   Usage
+Created int64
 }
 
 type Choice struct {
-    Index        int
-    Message      Message
-    FinishReason string // stop, length, tool_calls, content_filter
-    ToolCalls    []ToolCall
+Index        int
+Message      Message
+FinishReason string // stop, length, tool_calls, content_filter
+ToolCalls    []ToolCall
 }
 
 type ToolCall struct {
-    ID       string
-    Type     string // "function"
-    Function FunctionCall
+ID       string
+Type     string // "function"
+Function FunctionCall
 }
 
 type FunctionCall struct {
-    Name      string
-    Arguments string // JSON string
+Name      string
+Arguments string // JSON string
 }
 
 type Usage struct {
-    PromptTokens     int
-    CompletionTokens int
-    TotalTokens      int
+PromptTokens     int
+CompletionTokens int
+TotalTokens      int
 }
 ```
 
@@ -201,22 +198,22 @@ type Usage struct {
 
 ```go
 type StreamResponse struct {
-    ID      string
-    Model   string
-    Choices []StreamChoice
-    Created int64
+ID      string
+Model   string
+Choices []StreamChoice
+Created int64
 }
 
 type StreamChoice struct {
-    Index        int
-    Delta        Delta
-    FinishReason string
+Index        int
+Delta        Delta
+FinishReason string
 }
 
 type Delta struct {
-    Role      string
-    Content   string
-    ToolCalls []ToolCall
+Role      string
+Content   string
+ToolCalls []ToolCall
 }
 ```
 
@@ -226,20 +223,20 @@ type Delta struct {
 
 ```go
 type LLMClient interface {
-    // 同步调用
-    Chat(ctx context.Context, req *ChatRequest) (*ChatResponse, error)
-    
-    // 流式调用
-    ChatStream(ctx context.Context, req *ChatRequest) (<-chan StreamResponse, error)
-    
-    // 结构化输出
-    ChatStructured(ctx context.Context, req *ChatRequest, schema interface{}) (interface{}, error)
-    
-    // 获取配置
-    GetConfig() *Config
-    
-    // 关闭客户端
-    Close() error
+// 同步调用
+Chat(ctx context.Context, req *ChatRequest) (*ChatResponse, error)
+
+// 流式调用
+ChatStream(ctx context.Context, req *ChatRequest) (<-chan StreamResponse, error)
+
+// 结构化输出
+ChatStructured(ctx context.Context, req *ChatRequest, schema interface{}) (interface{}, error)
+
+// 获取配置
+GetConfig() *Config
+
+// 关闭客户端
+Close() error
 }
 ```
 
@@ -247,10 +244,10 @@ type LLMClient interface {
 
 ```go
 type Client struct {
-    config       *Config
-    openaiClient *openai.Client
-    logger       *Logger
-    retryHandler *RetryHandler
+config       *Config
+openaiClient *openai.Client
+logger       *Logger
+retryHandler *RetryHandler
 }
 ```
 
@@ -300,10 +297,10 @@ type Client struct {
 
 ```go
 type RetryConfig struct {
-    MaxRetries     int
-    InitialBackoff time.Duration
-    MaxBackoff     time.Duration
-    Multiplier     float64
+MaxRetries     int
+InitialBackoff time.Duration
+MaxBackoff     time.Duration
+Multiplier     float64
 }
 ```
 
@@ -327,10 +324,10 @@ type RetryConfig struct {
 
 ```go
 type Logger interface {
-    Debug(msg string, fields ...interface{})
-    Info(msg string, fields ...interface{})
-    Warn(msg string, fields ...interface{})
-    Error(msg string, fields ...interface{})
+Debug(msg string, fields ...interface{})
+Info(msg string, fields ...interface{})
+Warn(msg string, fields ...interface{})
+Error(msg string, fields ...interface{})
 }
 ```
 
@@ -353,32 +350,6 @@ type Logger interface {
 - 记录错误类型
 
 - 记录错误堆栈
-
-#### 任务 2.3: 流式响应处理 (`stream.go`)
-
-- [ ]  **实现 StreamReader**
-
-```go
-type StreamReader struct {
-    stream <-chan StreamResponse
-    err    error
-}
-
-func (r *StreamReader) Next() (*StreamResponse, error)
-func (r *StreamReader) Close() error
-```
-
-- [ ]  **实现流式数据聚合**
-
-- 累积 delta 内容
-
-- 处理工具调用流式响应
-
-- [ ]  **实现流式错误处理**
-
-- 捕获流式错误
-
-- 优雅关闭流
 
 #### 任务 2.4: 结构化输出 (`structured.go`)
 
@@ -412,16 +383,16 @@ func ParseStructured(jsonStr string, target interface{}) error
 
 ```go
 func main() {
-    client := llm.NewClient("etc/llm.yaml")
-    
-    resp, err := client.Chat(context.Background(), &llm.ChatRequest{
-        Model: "gpt-5",
-        Messages: []llm.Message{
-            {Role: "user", Content: "What is the meaning of life?"},
-        },
-    })
-    
-    fmt.Println(resp.Choices[0].Message.Content)
+client := llm.NewClient("etc/llm.yaml")
+
+resp, err := client.Chat(context.Background(), &llm.ChatRequest{
+Model: "gpt-5",
+Messages: []llm.Message{
+{Role: "user", Content: "What is the meaning of life?"},
+},
+})
+
+fmt.Println(resp.Choices[0].Message.Content)
 }
 ```
 
@@ -429,45 +400,25 @@ func main() {
 
 ```go
 type TradeDecision struct {
-    Action     string  `json:"action"`      // BUY, SELL, HOLD
-    Symbol     string  `json:"symbol"`      // BTC, ETH
-    Confidence float64 `json:"confidence"`  // 0-1
-    Reasoning  string  `json:"reasoning"`
+Action     string  `json:"action"` // BUY, SELL, HOLD
+Symbol     string  `json:"symbol"` // BTC, ETH
+Confidence float64 `json:"confidence"` // 0-1
+Reasoning  string  `json:"reasoning"`
 }
 
 func main() {
-    client := llm.NewClient("etc/llm.yaml")
-    
-    var decision TradeDecision
-    err := client.ChatStructured(ctx, &llm.ChatRequest{
-        Model: "gpt-5",
-        Messages: []llm.Message{
-            {Role: "system", Content: "You are a trading assistant."},
-            {Role: "user", Content: "Should I buy BTC now? Price: $68000"},
-        },
-    }, &decision)
+client := llm.NewClient("etc/llm.yaml")
 
-    fmt.Printf("Action: %s, Confidence: %.2f\n", decision.Action, decision.Confidence)
-}
-```
+var decision TradeDecision
+err := client.ChatStructured(ctx, &llm.ChatRequest{
+Model: "gpt-5",
+Messages: []llm.Message{
+{Role: "system", Content: "You are a trading assistant."},
+{Role: "user", Content: "Should I buy BTC now? Price: $68000"},
+},
+}, &decision)
 
-- [ ]  **流式响应示例** (`streaming.go`)
-
-```go
-func main() {
-    client := llm.NewClient("etc/llm.yaml")
-    
-    stream, err := client.ChatStream(ctx, &llm.ChatRequest{
-        Model: "gpt-5",
-        Messages: []llm.Message{
-            {Role: "user", Content: "Explain blockchain in simple terms"},
-        },
-        Stream: true,
-    })
-    
-    for chunk := range stream {
-        fmt.Print(chunk.Choices[0].Delta.Content)
-    }
+fmt.Printf("Action: %s, Confidence: %.2f\n", decision.Action, decision.Confidence)
 }
 ```
 
@@ -547,18 +498,18 @@ func main() {
 
 ```go
 func (e *Engine) MakeDecision(ctx *TradingContext) (*Decision, error) {
-    prompt := e.buildPrompt(ctx)
-    
-    var decision TradeDecision
-    err := e.llmClient.ChatStructured(context.Background(), &llm.ChatRequest{
-        Model: e.config.Model,
-        Messages: []llm.Message{
-            {Role: "system", Content: e.systemPrompt},
-            {Role: "user", Content: prompt},
-        },
-    }, &decision)
-    
-    return &decision, err
+prompt := e.buildPrompt(ctx)
+
+var decision TradeDecision
+err := e.llmClient.ChatStructured(context.Background(), &llm.ChatRequest{
+Model: e.config.Model,
+Messages: []llm.Message{
+{Role: "system", Content: e.systemPrompt},
+{Role: "user", Content: prompt},
+},
+}, &decision)
+
+return &decision, err
 }
 ```
 
@@ -652,16 +603,16 @@ import "github.com/openai/openai-go"
 
 // 初始化客户端
 client := openai.NewClient(
-    option.WithBaseURL("https://zenmux.ai/api/v1"),
-    option.WithAPIKey(apiKey),
+option.WithBaseURL("https://zenmux.ai/api/v1"),
+option.WithAPIKey(apiKey),
 )
 
 // 调用 Chat Completions
 resp, err := client.Chat.Completions.New(context.Background(), openai.ChatCompletionNewParams{
-    Model: openai.F("openai/gpt-5"),
-    Messages: openai.F([]openai.ChatCompletionMessageParamUnion{
-        openai.UserMessage("Hello!"),
-    }),
+Model: openai.F("openai/gpt-5"),
+Messages: openai.F([]openai.ChatCompletionMessageParamUnion{
+openai.UserMessage("Hello!"),
+}),
 })
 ```
 
@@ -684,11 +635,11 @@ resp, err := client.Chat.Completions.New(context.Background(), openai.ChatComple
 ```go
 // 方式 1: JSON Mode (推荐)
 resp, err := client.Chat.Completions.New(ctx, openai.ChatCompletionNewParams{
-    Model: openai.F("openai/gpt-5"),
-    Messages: openai.F(messages),
-    ResponseFormat: openai.F(openai.ChatCompletionNewParamsResponseFormat{
-        Type: openai.F(openai.ChatCompletionNewParamsResponseFormatTypeJSONObject),
-    }),
+Model: openai.F("openai/gpt-5"),
+Messages: openai.F(messages),
+ResponseFormat: openai.F(openai.ChatCompletionNewParamsResponseFormat{
+Type: openai.F(openai.ChatCompletionNewParamsResponseFormatTypeJSONObject),
+}),
 })
 
 // 方式 2: Structured Output (需要模型支持)
