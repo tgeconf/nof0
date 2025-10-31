@@ -87,19 +87,6 @@ executor/
 }
   ```
 
-- [ ]  **OITopData** - 持仓量增长数据
-
-  ```go
-  type OITopData struct {
-    Rank              int     // OI Top 排名
-    OIDeltaPercent    float64 // 持仓量变化百分比（1小时）
-    OIDeltaValue      float64 // 持仓量变化价值 (USD)
-    PriceDeltaPercent float64 // 价格变化百分比
-    NetLong           float64 // 净多仓
-    NetShort          float64 // 净空仓
-}
-  ```
-
 - [ ]  **Context** - 交易上下文结构
 
   ```go
@@ -109,13 +96,13 @@ executor/
     CallCount        int                     // 决策周期计数
     Account          AccountInfo             // 账户信息
     Positions        []PositionInfo          // 当前持仓列表
-    CandidateCoins   []CandidateCoin         // 候选币种列表
-    MarketDataMap    map[string]*MarketData  // 市场数据映射
-    OITopDataMap     map[string]*OITopData   // OI Top 数据映射
-    Performance      *PerformanceMetrics     // 历史表现分析
-    BTCETHLeverage   int                     // BTC/ETH 杠杆倍数
-    AltcoinLeverage  int                     // 山寨币杠杆倍数
-}
+    CandidateCoins   []CandidateCoin             // 候选币种列表（Manager 预筛）
+    MarketDataMap    map[string]*market.Snapshot // 市场快照映射（复用 market.Provider）
+    OpenInterestMap  map[string]*OpenInterest    // OI 扩展数据（可选）
+    Performance      *PerformanceView            // 历史表现概览（Manager 提供只读视图）
+    BTCETHLeverage   int                        // BTC/ETH 杠杆倍数（来自配置）
+    AltcoinLeverage  int                        // 山寨币杠杆倍数（来自配置）
+  }
   ```
 
 - [ ]  **Decision** - 单个交易决策结构
@@ -147,87 +134,65 @@ executor/
 }
   ```
 
-- [ ]  **PerformanceMetrics** - 性能指标结构
+- [ ]  **PerformanceView** - 来自 Manager 的性能数据只读视图
 
   ```go
-  type PerformanceMetrics struct {
-    SharpeRatio      float64 // 夏普比率
-    TotalTrades      int     // 总交易次数
-    WinRate          float64 // 胜率
-    AvgHoldingTime   int     // 平均持仓时间（分钟）
-    RecentTradesRate float64 // 最近交易频率（笔/小时）
+  type PerformanceView struct {
+    SharpeRatio      float64
+    WinRate          float64
+    TotalTrades      int
+    RecentTradesRate float64
+    UpdatedAt        time.Time
 }
   ```
 
 
-
 ## 核心功能实现
 
-### Phase 2: 市场数据获取 (market_data.go)
+## 依赖关系概览
 
-#### Priority: 🔴 High
-
-- [ ]  **fetchMarketDataForContext** - 获取市场数据并填充上下文
-
-- **输入**: `ctx *Context`
-
-- **输出**: `error`
-
-- **功能**:
-
-    - 优先获取持仓币种市场数据（必须）
-
-    - 根据账户状态动态获取候选币种数据
-
-    - **加载 OI Top 数据**
-
-    - **流动性过滤（持仓价值 < 15M USD 跳过，现有持仓除外）**
-
-- **实现要点**:
-
-    - **单个币种失败不影响整体流程**
-
-    - **记录详细日志（流动性过滤、获取失败等）**
-
-    - **计算持仓价值 = 持仓量 × 当前价格**
-
-- [ ]  **calculateMaxCandidates** - 计算最大候选币种数量
-
-- **输入**: `ctx *Context`
-
-- **输出**: `int`
-
-- **逻辑**:返回候选池全部币种数量（候选池已在 manager 中筛选）
-
-- [ ]  **filterByLiquidity** - 流动性过滤函数
-
-- **输入**: `symbol string, positionValue float64, isExistingPosition bool`
-
-- **输出**:`bool` (是否通过过滤)
-
-- **规则**:
-
-    - **持仓价值 < 15M USD → 跳过**
-
-    - **现有持仓必须保留（需决策是否平仓）**
+- **市场数据**：通过 `market.Provider` 获取，并直接使用 `*market.Snapshot`。Executor 不再维护独立的 MarketData 结构，只负责做轻量过滤和聚合。
+- **性能指标**：由 Manager 汇总成 `PerformanceView`，注入到上下文中，Executor 只读使用。
+- **交易账户信息**：从 `exchange.Provider` 返回的 `AccountState`、`Position` 经过 Manager 归一化后传入。
+- **大模型客户端**：遵循 `llm.LLMClient` 接口 via 依赖注入。
 
 
+## 实施阶段（MVP 聚焦）
 
-### Phase 3: Prompt 生成 (prompt.go)
+### Phase 0：核心类型与接口 (types.go, executor.go)
+- [ ] 定义 `Context` / `Decision` / `FullDecision` 数据结构
+- [ ] 定义 `PerformanceView`、`OpenInterest` 等辅助类型
+- [ ] 声明 `Executor` 接口（`GetFullDecision` / `UpdatePerformance` / `GetConfig`）并规划依赖注入点
 
-#### Priority: 🔴 High
+### Phase 1：上下文组装 (context.go)
+- [ ] `BuildContext`：整合账户、持仓、候选币、实时配置
+- [ ] `fetchMarketSnapshots`：批量调用 `market.Provider`，生成 `map[string]*market.Snapshot`
+- [ ] `mergeOpenInterest`：在 Manager 提供扩展数据时合并为 `OpenInterestMap`
+- [ ] `attachPerformanceView`：把 Manager 的 `PerformanceView` 注入上下文
+- [ ] `filterCandidates`：保留流动性符合要求的候选币，并确保现有持仓不过滤
 
-- [ ]  **buildSystemPrompt** - 构建系统提示词（固定规则，可缓存）
+### Phase 2：Prompt 生成与 LLM 调用 (prompt.go, executor.go)
+- [ ] `buildSystemPrompt`（缓存静态规则）
+- [ ] `buildUserPrompt`：使用 `market.Snapshot`、持仓、候选币信息生成上下文文本
+- [ ] `callLLM`：通过 `llm.LLMClient` 调用模型，处理超时/重试/日志
+- [ ] `sanitizeResponse`：在进入解析前做基础清洗（去除 BOM、截断异常字符）
 
-- **输入**: `accountEquity float64`
+### Phase 3：响应解析与验证 (parser.go, validator.go)
+- [ ] `parseFullDecisionResponse`：输出 `FullDecision`，包含 prompt、CoT、决策列表
+- [ ] `extractCoTTrace` / `extractDecisions`：容错处理缺失字段、json 修复
+- [ ] `validateDecisions`：检查仓位数量、杠杆、仓位大小、风险回报、保证金占用等硬约束
+- [ ] `enrichDecisions`：补全缺失价格或信心度、转换单位
 
-- **输出**: `string`
-
-- **内容包含**:
-
-    - **核心目标：最大化夏普比率**
-
-    - **硬约束：风险回报比 ≥ 3:1、最多 3 个持仓、保证金使用率 ≤ 90%**
+### Phase 4：决策输出与反馈 (executor.go, utils.go)
+- [ ] `assembleDecision`：结合上下文与解析结果返回 `FullDecision`
+- [ ] 记录核心日志和指标（决策耗时、提示词长度、模型 ID 等）
+- [ ] `UpdatePerformance`：接受 Manager 推送的最新绩效视图，更新缓存
+- [ ] 对接 Manager：确认数据格式、错误返回语义
+### Backlog（下一阶段再实现）
+- 夏普率反馈、交易频率分析
+- 更复杂的 OI Top/成交量过滤
+- 性能 profiling 与缓存策略优化
+- 深度集成测试 / 压测工具
 
     - **做空激励：多空平衡理念**
 
@@ -257,13 +222,13 @@ executor/
 
     - **当前持仓（含持仓时长、盈亏情况）**
 
-    - **候选币种（含完整市场数据、OI Top 信息）**
+    - **候选币种（含市场快照、OpenInterest 扩展）**
 
     - **夏普比率反馈（当前值、历史表现）**
 
 - **实现要点**:
 
-    - **使用 `market.Format()` 输出完整市场数据**
+    - **直接使用 `market.Snapshot` 提供的字段构造输出**
 
     - **计算持仓时长（当前时间 - 入场时间）**
 
@@ -279,7 +244,7 @@ executor/
 
 - [ ]  **formatCandidateInfo** - 格式化候选币种信息
 
-- **输入**: `coin CandidateCoin, marketData *MarketData, oiData *OITopData`
+- **输入**: `coin CandidateCoin, snapshot *market.Snapshot, oiData *OpenInterest`
 
 - **输出**: `string`
 
@@ -287,7 +252,7 @@ executor/
 
 
 
-### Phase 4: AI 集成 (executor.go)
+### Phase 2 细化：AI 集成 (executor.go)
 
 #### Priority: 🔴 High
 
@@ -299,35 +264,35 @@ executor/
 
 - **流程**:
 
-    1. 调用 `fetchMarketDataForContext(ctx)` 获取市场数据
+    1. 调用 `fetchMarketSnapshots(ctx)` 完成市场数据补全
 
     2. 调用 `buildSystemPrompt(ctx.Account.TotalEquity)` 构建系统提示词
 
     3. 调用 `buildUserPrompt(ctx)` 构建用户提示词
 
-    4. 调用 `mcp.CallWithMessages(systemPrompt, userPrompt)` 获取 AI 响应
+    4. 调用 `callLLM(ctx, systemPrompt, userPrompt)` 获取模型响应
 
     5. 调用 `parseFullDecisionResponse(aiResponse, ctx)` 解析响应
 
     6. 返回 `FullDecision` 结构
 
-- [ ]  **callAIAPI** - AI API 调用封装
+- [ ]  **callLLM** - LLM 调用封装
 
-- **输入**: `systemPrompt string, userPrompt string`
+- **输入**: `ctx context.Context, systemPrompt string, userPrompt string`
 
 - **输出**: `(string, error)`
 
 - **功能**:
 
-    - **使用 MCP (Model Context Protocol) 调用 Claude**
+    - **通过 `llm.LLMClient` 发起调用，支持同步或流式扩展**
 
-    - **处理 API 错误和重试逻辑**
+    - **应用超时、重试、熔断等容错策略**
 
-    - **记录请求和响应日志**
+    - **记录请求与响应摘要日志，脱敏敏感字段**
 
 
 
-### Phase 5: 响应解析 (parser.go)
+### Phase 3 细化：响应解析 (parser.go)
 
 #### Priority: 🔴 High
 
@@ -389,7 +354,7 @@ executor/
 
 
 
-### Phase 6: 决策验证 (validator.go)
+### Phase 3 细化：决策验证 (validator.go)
 
 #### Priority: 🔴 High
 
@@ -475,7 +440,7 @@ executor/
 
 
 
-### Phase 7: 工具函数 (utils.go)
+### Phase 4 细化：工具函数 (utils.go)
 
 #### Priority: 🟡 Medium
 
@@ -523,7 +488,7 @@ executor/
 
 ## 风险控制规则实现
 
-### Phase 8: 风险控制 (validator.go 扩展)
+### Backlog：风险控制增强 (validator.go 扩展)
 
 #### Priority: 🔴 High
 
@@ -572,7 +537,7 @@ executor/
 
 ## 夏普比率优化机制
 
-### Phase 9: 性能反馈 (context.go 扩展)
+### Backlog：性能反馈 (context.go 扩展)
 
 #### Priority: 🟡 Medium
 
@@ -616,7 +581,7 @@ executor/
 
 ## 测试清单
 
-### Phase 10: 单元测试
+### Backlog：单元测试清单
 
 #### Priority: 🟡 Medium
 
@@ -664,7 +629,7 @@ executor/
 
 
 
-### Phase 11: 集成测试
+### Backlog：集成测试清单
 
 #### Priority: 🟡 Medium
 
@@ -678,7 +643,7 @@ executor/
 
 - [ ]  **AI API 集成测试**
 
-- **[ ]  MCP API 调用成功**
+- **[ ]  LLM API 调用成功**
 
 - **[ ]  API 超时处理**
 
@@ -704,7 +669,7 @@ executor/
 
 ## 与 Manager 模块的集成点
 
-### Phase 12: 接口定义
+### Backlog：接口定义补充
 
 #### Priority: 🔴 High
 
@@ -801,19 +766,15 @@ executor/
 
 ## 实施顺序建议
 
-1. **Phase 1-2**：基础数据结构 + 市场数据获取（建立数据基础）
+1. **Phase 0-1**：核心类型、上下文构建、Provider 接入
 
-2. **Phase 3-4**：Prompt 生成 + AI 集成（实现核心决策流程）
+2. **Phase 2**：Prompt 生成与 LLM 调用
 
-3. **Phase 5-6**：响应解析 + 决策验证（确保输出质量）
+3. **Phase 3**：响应解析与风险验证
 
-4. **Phase 7-8**：工具函数 + 风险控制（完善细节）
+4. **Phase 4**：决策输出、性能反馈
 
-5. **Phase 9**：性能反馈机制（优化策略）
-
-6. **Phase 10-11**：测试（保证质量）
-
-7. **Phase 12**：接口定义（对接 Manager）
+5. **Backlog**：性能优化、测试矩阵、接口扩展
 
 
 
@@ -821,7 +782,7 @@ executor/
 
 - **决策引擎产品文档**：详细技术规范和设计理念
 
-- **MCP API 文档**：AI 调用接口说明
+- **LLM API 文档**：AI 调用接口说明
 
 - **Market 包文档**：市场数据格式和获取方法
 
@@ -844,3 +805,13 @@ executor/
 - **[ ]  与 Manager 模块接口对接成功**
 
 - **[ ]  实际运行验证（至少 24 小时无崩溃）**
+- [ ]  **OpenInterest** - 附加 OI 数据（仅在 Manager 提供时使用）
+
+  ```go
+  type OpenInterest struct {
+    Latest        float64
+    Delta1hPct    float64
+    DeltaValueUSD float64
+    Source        string
+}
+  ```

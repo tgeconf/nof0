@@ -10,6 +10,13 @@ Manager 管理器模块是新系统的**编排层（Orchestration Layer）**，�
 - **跨交易员监控** - 聚合性能指标、持仓状态、风险暴露
 - **资源协调** - 在多个交易员间分配资金、管理冲突信号
 
+## 依赖组件
+
+- `exchange.Provider`：执行下单、撤单、持仓、账户查询
+- `market.Provider`：拉取统一的市场快照（与 Executor 共用）
+- `executor.Executor`：负责 LLM 决策逻辑，通过 ExecutorClient 调用
+- `llm.LLMClient`：由 Executor 内部使用，Manager 仅负责配置
+
 ## 核心创新：虚拟交易员（Virtual Trader）
 
 ### 传统架构问题
@@ -49,11 +56,6 @@ manager/
 ├── conflict_resolver.go    # 冲突解决器
 ├── state_manager.go        # 状态持久化
 ├── monitor.go              # 性能监控
-├── exchange/               # 交易所适配器
-│   ├── adapter.go          # 统一接口定义
-│   ├── hyperliquid.go      # Hyperliquid 实现
-│   ├── binance.go          # Binance 实现
-│   └── mock.go             # 模拟交易所（测试用）
 └── manager_test.go         # 集成测试
 ```
 
@@ -65,19 +67,21 @@ manager/
 
 ```go
 type VirtualTrader struct {
-    ID              string                 // 唯一标识（如 "trader_aggressive_short"）
-    Name            string                 // 显示名称
-    Exchange        string                 // 交易所类型（hyperliquid/binance）
-    ExchangeAdapter ExchangeAdapter        // 交易所适配器实例
-    PromptTemplate  string                 // Prompt 模板路径或内容
-    RiskParams      RiskParameters         // 风险参数配置
-    ResourceAlloc   ResourceAllocation     // 资源分配
-    State           TraderState            // 运行状态
-    Performance     PerformanceMetrics     // 性能指标
-    LastDecisionAt  time.Time              // 上次决策时间
-    DecisionInterval time.Duration         // 决策间隔（如 3分钟）
-    CreatedAt       time.Time
-    UpdatedAt       time.Time
+    ID               string                 // 唯一标识（如 "trader_aggressive_short"）
+    Name             string                 // 显示名称
+    Exchange         string                 // 交易所枚举（hyperliquid/binance）
+    ExchangeProvider exchange.Provider      // 交易执行适配器（统一接口）
+    MarketProvider   market.Provider        // 市场数据来源
+    Executor         executor.Executor      // 决策执行器实例（本地或 RPC）
+    PromptTemplate   string                 // Prompt 模板路径或内容
+    RiskParams       RiskParameters         // 风险参数配置
+    ResourceAlloc    ResourceAllocation     // 资金/保证金分配
+    State            TraderState            // 运行状态
+    Performance      *PerformanceMetrics    // 最近绩效快照（用于生成 PerformanceView）
+    LastDecisionAt   time.Time              // 上次决策时间
+    DecisionInterval time.Duration          // 决策间隔（如 3分钟）
+    CreatedAt        time.Time
+    UpdatedAt        time.Time
 }
 ```
 
@@ -169,19 +173,34 @@ func (t *VirtualTrader) RecordDecision(timestamp time.Time)
 
 ```go
 type Manager struct {
-    traders          map[string]*VirtualTrader // Trader ID -> Trader
-    exchangeAdapters map[string]ExchangeAdapter // Exchange Type -> Adapter
-    orchestrator     *Orchestrator
-    resourceAllocator *ResourceAllocator
-    conflictResolver *ConflictResolver
-    stateManager     *StateManager
-    monitor          *Monitor
-    config           *Config
-    mu               sync.RWMutex
-    stopChan         chan struct{}
-    wg               sync.WaitGroup
+    traders         map[string]*VirtualTrader // Trader ID -> Trader
+    executorFactory ExecutorFactory           // 提供 Executor（本地或 RPC）
+    marketProvider  market.Provider           // 默认市场数据入口
+    exchangeFactory ExchangeFactory           // 根据配置生成 exchange.Provider
+    orchestrator    *Orchestrator
+    monitor         *Monitor
+    config          *Config
+    mu              sync.RWMutex
+    stopChan        chan struct{}
+    wg              sync.WaitGroup
 }
 ```
+### 工厂接口约定
+
+```go
+type ExecutorFactory interface {
+    NewExecutor(traderCfg TraderConfig) (executor.Executor, error)
+}
+
+type ExchangeFactory interface {
+    NewExchange(exchCfg ExchangeConfig) (exchange.Provider, error)
+}
+```
+
+- `ExecutorFactory` 负责根据 Trader / 环境配置返回本地或远程的 `executor.Executor`
+- `ExchangeFactory` 负责构建具体交易所的 `exchange.Provider`（如 Hyperliquid、Binance）
+- 两者均可实现连接复用或缓存，由 Manager 在初始化阶段注入
+
 
 
 
@@ -195,11 +214,11 @@ func InitializeManager(configPath string) (*Manager, error)
 
 1. 加载配置文件（YAML/JSON）
 
-2. 初始化交易所适配器
+2. 构建 `market.Provider`、`ExecutorFactory`、`ExchangeFactory`
 
 3. 加载已保存的 Trader 状态
 
-4. 初始化子模块（orchestrator, allocator, resolver, monitor）
+4. 初始化子模块（orchestrator、monitor、资源调度策略）
 
 5. 启动监控协程
 
@@ -227,15 +246,15 @@ func (m *Manager) RegisterTrader(config TraderConfig) (*VirtualTrader, error)
 
 3. 创建 VirtualTrader 实例
 
-4. 分配交易所适配器
+4. 通过 `ExchangeFactory` 生成专属 `exchange.Provider`
 
-5. 初始化资源分配
+5. 注入共享 `market.Provider`、创建 `Executor`
 
-6. 加入 traders map
+6. 初始化资源分配
 
-7. 持久化状态
+7. 加入 traders map
 
-8. 触发监控更新
+8. 持久化状态并触发监控更新
 
 **验证项**：
 
@@ -302,7 +321,7 @@ for {
                 }
 
                 // 3. 冲突检测和解决
-                resolvedDecisions := m.conflictResolver.Resolve(decision, m.traders)
+                resolvedDecisions := m.conflictResolver.Resolve(trader, decision, m.traders)
 
                 // 4. 执行决策
                 for _, d := range resolvedDecisions {
@@ -339,16 +358,16 @@ for {
 #### ☐ **P0** - 实现 ExecuteDecision
 
 ```go
-func (m *Manager) ExecuteDecision(trader *VirtualTrader, decision *Decision) error
+func (m *Manager) ExecuteDecision(trader *VirtualTrader, decision *executor.Decision) error
 ```
 
 **实现步骤**：
 
-1. 验证决策合法性（风险参数）
+1. 验证决策合法性（基于 `executor.Decision` 与 Trader 风险参数）
 
 2. 检查资源可用性（余额、保证金）
 
-3. 调用交易所适配器执行
+3. 调用 `trader.ExchangeProvider` 执行下单/平仓
 
 4. 记录执行结果
 
@@ -431,7 +450,22 @@ type AggregatePerformance struct {
     TraderCount       int
     ActiveTraderCount int
 }
+
+// 向 Executor 暴露的精简性能视图
+type PerformanceView struct {
+    SharpeRatio      float64
+    WinRate          float64
+    TotalTrades      int
+    RecentTradesRate float64
+    UpdatedAt        time.Time
+}
 ```
+
+**转换逻辑**：
+
+- `PerformanceMetrics` 计算完成后，生成 `PerformanceView` 注入 `executor.Context`
+- RecentTradesRate 可由近 N 分钟成交数推导
+- `UpdatedAt` 用于 LLM 判断数据新鲜度
 
 
 
@@ -464,9 +498,22 @@ func (m *Manager) UpdateTraderConfig(traderID string, newConfig TraderConfig) er
 ```go
 type Orchestrator struct {
     executorClient ExecutorClient // 与 Executor 模块通信
-    decisionQueue  chan DecisionRequest
+    decisionQueue  chan DecisionTask
     resultQueue    chan DecisionResult
     workers        int // 并发 worker 数量
+}
+
+type DecisionTask struct {
+    TraderID    string
+    Context     *executor.Context
+    Priority    int
+    RequestedAt time.Time
+}
+
+type DecisionResult struct {
+    TraderID string
+    Output   *executor.FullDecision
+    Err      error
 }
 ```
 
@@ -475,20 +522,20 @@ type Orchestrator struct {
 #### ☐ **P0** - 实现 RequestDecision
 
 ```go
-func (o *Orchestrator) RequestDecision(trader *VirtualTrader) (*FullDecision, error)
+func (o *Orchestrator) RequestDecision(trader *VirtualTrader) (*executor.FullDecision, error)
 ```
 
 **实现步骤**：
 
-1. 构建决策请求（包含 Trader 配置、市场数据、持仓状态）
+1. 构建 `DecisionTask`，填充 `executor.Context`（包含 Trader 配置、市场数据、持仓、绩效视图）
 
 2. 发送到 Executor 模块（HTTP/gRPC/本地调用）
 
 3. 等待决策结果（带超时）
 
-4. 解析和验证决策
+4. 解析和验证 `executor.FullDecision`
 
-5. 返回 FullDecision
+5. 返回结果给 Manager 主循环
 
 **超时处理**：
 
@@ -513,7 +560,7 @@ func (o *Orchestrator) StartWorkers(ctx context.Context)
 #### ☐ **P1** - 实现决策优先级队列
 
 ```go
-func (o *Orchestrator) PrioritizeRequests(requests []DecisionRequest) []DecisionRequest
+func (o *Orchestrator) PrioritizeRequests(requests []DecisionTask) []DecisionTask
 ```
 
 **优先级规则**：
@@ -635,10 +682,14 @@ type ConflictResolver struct {
 
 ```go
 func (cr *ConflictResolver) Resolve(
-    newDecision *FullDecision,
+    trader *VirtualTrader,
+    decision *executor.FullDecision,
     allTraders map[string]*VirtualTrader,
-) []*Decision
+) []*executor.Decision
 ```
+
+- 遍历 `decision.Decisions`，结合当前 Trader 和全局状态识别冲突
+- 输出经策略筛选后的 `[]*executor.Decision`，供后续执行器使用
 
 **冲突场景**：
 
@@ -688,7 +739,7 @@ Trader_B: 需要 300 USD
 
 ```go
 func (cr *ConflictResolver) DetectConflicts(
-    decisions []*Decision,
+    decisions []*executor.Decision,
     traders map[string]*VirtualTrader,
 ) []Conflict
 ```
@@ -700,7 +751,7 @@ type Conflict struct {
     Type        string   // "direction" / "resource" / "duplicate"
     Symbol      string
     TraderIDs   []string
-    Decisions   []*Decision
+    Decisions   []*executor.Decision
     Severity    string   // "high" / "medium" / "low"
 }
 ```
@@ -776,7 +827,7 @@ func (sm *StateManager) LoadState() (*ManagerState, error)
 
 3. 重建 VirtualTrader 实例
 
-4. 重新连接交易所适配器
+4. 重新初始化交易所 Provider（通过 ExchangeFactory）
 
 5. 同步最新持仓状态
 
@@ -969,150 +1020,23 @@ func (m *Monitor) GetDashboardData() *DashboardData
 
 - Prometheus Metrics（供 Grafana）
 
-### 8. 交易所适配器接口 (exchange/adapter.go)
+### 8. 交易所集成（exchange/）
 
-#### ☐ **P0** - 定义 ExchangeAdapter 接口
+#### ☐ **P0** - 复用现有 `pkg/exchange.Provider`
 
-```go
-type ExchangeAdapter interface {
-    // 连接管理
-    Connect(config ExchangeConfig) error
-    Disconnect() error
-    IsConnected() bool
+- Manager 通过 `ExchangeFactory` 按交易员配置构建 `hyperliquid.Provider` 等实例
+- 下单、撤单、持仓、账户信息直接使用 `pkg/exchange/types.go` 中的结构
+- 与 Executor 交互时不再额外转换订单/仓位格式
 
-    // 账户信息
-    GetAccountInfo() (*AccountInfo, error)
-    GetPositions() ([]PositionInfo, error)
+#### ☐ **P1** - 装饰器包装（可选）
 
-    // 市场数据
-    GetMarketData(symbol string) (*MarketData, error)
-    GetMarketDataBatch(symbols []string) (map[string]*MarketData, error)
+- 对 Provider 进行限流、重试、监控等横切增强
+- 封装在单独装饰器中，保持核心逻辑简洁
 
-    // 交易执行
-    OpenPosition(order *OpenPositionOrder) (*OrderResult, error)
-    ClosePosition(order *ClosePositionOrder) (*OrderResult, error)
-    ModifyPosition(order *ModifyPositionOrder) (*OrderResult, error)
+#### ☐ **Backlog** - 扩展交易所与 Mock Provider
 
-    // 订单管理
-    GetOrder(orderID string) (*Order, error)
-    CancelOrder(orderID string) error
-
-    // 元数据
-    GetExchangeInfo() *ExchangeInfo
-    GetTradingFees(symbol string) (*TradingFees, error)
-}
-```
-
-
-
-#### ☐ **P0** - 定义通用数据结构
-
-**OpenPositionOrder**：
-
-```go
-type OpenPositionOrder struct {
-    Symbol          string
-    Side            string  // "long" / "short"
-    Leverage        int
-    PositionSizeUSD float64
-    StopLoss        float64
-    TakeProfit      float64
-    OrderType       string  // "market" / "limit"
-    LimitPrice      float64 // 限价单价格（可选）
-}
-```
-
-**ClosePositionOrder**：
-
-```go
-type ClosePositionOrder struct {
-    Symbol      string
-    Side        string
-    Quantity    float64 // 平仓数量（0 = 全平）
-    OrderType   string  // "market" / "limit"
-    LimitPrice  float64
-}
-```
-
-**OrderResult**：
-
-```go
-type OrderResult struct {
-    OrderID       string
-    Status        string  // "filled" / "partial" / "rejected"
-    FilledQty     float64
-    AvgPrice      float64
-    Fee           float64
-    Timestamp     time.Time
-    ErrorMessage  string
-}
-```
-
-
-
-#### ☐ **P0** - 实现 Hyperliquid 适配器 (exchange/hyperliquid.go)
-
-```go
-type HyperliquidAdapter struct {
-    client    *hyperliquid.Client
-    apiKey    string
-    apiSecret string
-    testnet   bool
-}
-```
-
-**实现方法**：
-
-- 复用现有 `hyperliquid/` 包的代码
-
-- 适配到统一接口
-
-- 添加错误处理和重试机制
-
-#### ☐ **P1** - 实现 Binance 适配器 (exchange/binance.go)
-
-```go
-type BinanceAdapter struct {
-    client    *binance.Client
-    apiKey    string
-    apiSecret string
-    testnet   bool
-}
-```
-
-**实现方法**：
-
-- 复用现有 `binance/` 包的代码
-
-- 适配到统一接口
-
-- 处理 Binance 特有的限流规则
-
-#### ☐ **P2** - 实现 Mock 适配器 (exchange/mock.go)
-
-```go
-type MockAdapter struct {
-    positions      []PositionInfo
-    accountBalance float64
-    marketData     map[string]*MarketData
-}
-```
-
-**用途**：
-
-- 单元测试
-
-- 集成测试
-
-- 策略回测（未来扩展）
-
-**实现要点**：
-
-- 模拟订单执行延迟
-
-- 模拟部分成交
-
-- 模拟 API 错误
+- Binance 等其他交易所按同样流程集成
+- Mock Provider 通过实现 `exchange.Provider` 接口支撑测试场景
 
 ### 9. 配置管理 (config.go)
 
@@ -1454,26 +1378,17 @@ func TestManagerStressTest(t *testing.T)
 
 ```go
 type ExecutorClient interface {
-    RequestDecision(ctx context.Context, req *DecisionRequest) (*DecisionResponse, error)
-    Ping() error
-}
-
-type DecisionRequest struct {
-    TraderID       string
-    PromptTemplate string
-    MarketData     map[string]*MarketData
-    Positions      []PositionInfo
-    Account        AccountInfo
-    RiskParams     RiskParameters
-}
-
-type DecisionResponse struct {
-    CoTTrace   string
-    Decisions  []Decision
-    Timestamp  time.Time
-    ErrorMsg   string
+    RequestDecision(ctx context.Context, input *executor.Context) (*executor.FullDecision, error)
+    Ping(ctx context.Context) error
 }
 ```
+
+**上下文构建职责**：
+
+1. 从 `exchange.Provider` 拉取账户/持仓，映射为 `executor.AccountInfo` / `executor.PositionInfo`
+2. 聚合 `market.Provider` 返回的 `*market.Snapshot`
+3. 注入 Trader 配置（杠杆、风险阈值）与 `PerformanceView`
+4. 拼接 Trader Prompt 模板，写入 `executor.Context`
 
 
 
@@ -1481,12 +1396,11 @@ type DecisionResponse struct {
 
 ```go
 type LocalExecutorClient struct {
-    executor *executor.Executor
+    executor executor.Executor
 }
 
-func (c *LocalExecutorClient) RequestDecision(ctx context.Context, req *DecisionRequest) (*DecisionResponse, error) {
-    // 直接调用 executor 包的函数
-    return c.executor.GetFullDecision(req)
+func (c *LocalExecutorClient) RequestDecision(ctx context.Context, input *executor.Context) (*executor.FullDecision, error) {
+    return c.executor.GetFullDecision(input)
 }
 ```
 
@@ -1500,10 +1414,10 @@ type HTTPExecutorClient struct {
     httpClient *http.Client
 }
 
-func (c *HTTPExecutorClient) RequestDecision(ctx context.Context, req *DecisionRequest) (*DecisionResponse, error) {
+func (c *HTTPExecutorClient) RequestDecision(ctx context.Context, input *executor.Context) (*executor.FullDecision, error) {
     // POST /api/v1/decision
-    // Body: JSON(req)
-    // Response: JSON(DecisionResponse)
+    // Body: JSON(input)
+    // Response: JSON(executor.FullDecision)
 }
 ```
 
@@ -1583,73 +1497,64 @@ func (m *Monitor) SendAlert(alert Alert) error
 
 ### P0 - 核心功能（必须实现）
 
-- Manager 基础结构和生命周期
-
-- VirtualTrader 抽象和管理
-
-- 交易循环编排
-
-- 交易所适配器接口
-
-- 状态持久化
-
-- 基础监控
+- Manager 基础结构与生命周期
+- VirtualTrader 抽象与注册/注销
+- 交易循环编排 + Executor 调用链路
+- 复用 `exchange.Provider`、`market.Provider`
+- 状态持久化（Trader 元数据）
+- 基础监控（日志 + 轻量统计）
 
 ### P1 - 重要功能（尽快实现）
 
-- 冲突解决机制
-
-- 资源动态分配
-
-- 告警系统
-
-- 多交易所支持
-
-- 性能报告
+- 冲突解决与资源动态分配
+- 决策节流/队列（限流策略）
+- 告警/通知系统
+- 多交易所配置支持
+- 性能报告与指标聚合
 
 ### P2 - 增强功能（后续迭代）
 
-- 配置热加载
-
-- 可视化仪表板
-
-- gRPC 通信
-
-- 压力测试
-
-- 高级分析
+- 配置热加载与 UI 集成
+- 可视化仪表盘
+- gRPC / HTTP 远程控制
+- 压力测试与回放框架
+- 高级分析（Trader 排名、资金自动调度）
 
 ## 开发建议
 
 ### 1. 开发顺序
 
 ```plaintext
-阶段 1: 核心框架（1-2 周）
-  ├─ Manager 结构 + 配置管理
-  ├─ VirtualTrader 抽象
-  ├─ Mock 交易所适配器
-  └─ 基础测试
+阶段 0: 核心架构（1 周）
+  ├─ Manager 结构 + 配置加载
+  ├─ VirtualTrader 抽象与注册流程
+  ├─ 复用 `exchange.Provider` / `market.Provider`
+  └─ 基础单元测试
 
-阶段 2: 交易循环（1 周）
+阶段 1: 交易循环（1 周）
   ├─ Orchestrator 实现
-  ├─ 与 Executor 集成
-  └─ 决策执行流程
+  ├─ Executor 调用链打通
+  └─ 决策执行 & 状态同步
 
-阶段 3: 资源管理（1 周）
+阶段 2: 状态与监控（1 周）
+  ├─ StateManager（快照 + 恢复）
+  ├─ 基础监控面板（日志/metrics）
+  └─ 性能视图汇总
+
+阶段 3: 资源与冲突管理（1 周）
   ├─ ResourceAllocator
   ├─ ConflictResolver
-  └─ 多 Trader 协调
+  └─ Trader 调度策略
 
-阶段 4: 监控告警（1 周）
-  ├─ Monitor 实现
-  ├─ Prometheus 集成
-  └─ Webhook 告警
+阶段 4: 告警与扩展（1 周）
+  ├─ Prometheus / Webhook 集成
+  ├─ 多交易所配置
+  └─ 报表与告警流程
 
 阶段 5: 生产就绪（1-2 周）
-  ├─ 真实交易所适配器
-  ├─ 状态持久化
+  ├─ 系统回归测试 & 压测
   ├─ 错误处理完善
-  └─ 集成测试
+  └─ 集成测试/演练
 ```
 
 
