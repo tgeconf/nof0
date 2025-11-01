@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/openai/openai-go"
 	"github.com/stretchr/testify/require"
 )
 
@@ -219,4 +220,165 @@ func TestClientChatStructured(t *testing.T) {
 	responseFormat, ok := captured["response_format"].(map[string]any)
 	require.True(t, ok)
 	require.Contains(t, responseFormat, "json_schema")
+}
+
+func TestClientOptions(t *testing.T) {
+	t.Run("WithLogger", func(t *testing.T) {
+		cfg := &Config{
+			BaseURL:      "https://api.example.com",
+			APIKey:       "test-key",
+			DefaultModel: "gpt-4",
+			Timeout:      5 * time.Second,
+			MaxRetries:   1,
+		}
+
+		customLogger := NewLogger("debug")
+		client, err := NewClient(cfg, WithLogger(customLogger))
+		require.NoError(t, err)
+		defer client.Close()
+
+		require.NotNil(t, client.logger)
+		require.Equal(t, customLogger, client.logger)
+	})
+
+	t.Run("WithRetryHandler", func(t *testing.T) {
+		cfg := &Config{
+			BaseURL:      "https://api.example.com",
+			APIKey:       "test-key",
+			DefaultModel: "gpt-4",
+			Timeout:      5 * time.Second,
+			MaxRetries:   1,
+		}
+
+		customRetry := NewRetryHandler(RetryConfig{MaxRetries: 5})
+		client, err := NewClient(cfg, WithRetryHandler(customRetry))
+		require.NoError(t, err)
+		defer client.Close()
+
+		require.NotNil(t, client.retryHandler)
+		require.Equal(t, customRetry, client.retryHandler)
+	})
+
+	t.Run("WithHTTPClient", func(t *testing.T) {
+		cfg := &Config{
+			BaseURL:      "https://api.example.com",
+			APIKey:       "test-key",
+			DefaultModel: "gpt-4",
+			Timeout:      5 * time.Second,
+			MaxRetries:   1,
+		}
+
+		customHTTPClient := &http.Client{Timeout: 10 * time.Second}
+		client, err := NewClient(cfg, WithHTTPClient(customHTTPClient))
+		require.NoError(t, err)
+		defer client.Close()
+
+		require.NotNil(t, client.httpClient)
+	})
+
+	t.Run("multiple options", func(t *testing.T) {
+		cfg := &Config{
+			BaseURL:      "https://api.example.com",
+			APIKey:       "test-key",
+			DefaultModel: "gpt-4",
+			Timeout:      5 * time.Second,
+			MaxRetries:   1,
+		}
+
+		customLogger := NewLogger("debug")
+		customRetry := NewRetryHandler(RetryConfig{MaxRetries: 5})
+		customHTTPClient := &http.Client{Timeout: 10 * time.Second}
+
+		client, err := NewClient(cfg,
+			WithLogger(customLogger),
+			WithRetryHandler(customRetry),
+			WithHTTPClient(customHTTPClient),
+		)
+		require.NoError(t, err)
+		defer client.Close()
+
+		require.Equal(t, customLogger, client.logger)
+		require.Equal(t, customRetry, client.retryHandler)
+	})
+}
+
+func TestGetConfig(t *testing.T) {
+	cfg := &Config{
+		BaseURL:      "https://api.example.com",
+		APIKey:       "test-key",
+		DefaultModel: "gpt-4",
+		Timeout:      5 * time.Second,
+		MaxRetries:   3,
+		LogLevel:     "info",
+	}
+
+	client, err := NewClient(cfg)
+	require.NoError(t, err)
+	defer client.Close()
+
+	returnedCfg := client.GetConfig()
+	require.NotNil(t, returnedCfg)
+	require.Equal(t, cfg.BaseURL, returnedCfg.BaseURL)
+	require.Equal(t, cfg.APIKey, returnedCfg.APIKey)
+	require.Equal(t, cfg.DefaultModel, returnedCfg.DefaultModel)
+	require.Equal(t, cfg.Timeout, returnedCfg.Timeout)
+
+	// Verify it's a clone, not the original
+	require.NotSame(t, cfg, returnedCfg)
+}
+
+func TestConvertToolCalls(t *testing.T) {
+	t.Run("empty tool calls", func(t *testing.T) {
+		result := convertToolCalls(nil)
+		require.Nil(t, result)
+
+		result = convertToolCalls([]openai.ChatCompletionMessageToolCall{})
+		require.Nil(t, result)
+	})
+
+	t.Run("single tool call", func(t *testing.T) {
+		calls := []openai.ChatCompletionMessageToolCall{
+			{
+				ID:   "call_123",
+				Type: "function",
+				Function: openai.ChatCompletionMessageToolCallFunction{
+					Name:      "get_weather",
+					Arguments: `{"location":"Tokyo"}`,
+				},
+			},
+		}
+
+		result := convertToolCalls(calls)
+		require.Len(t, result, 1)
+		require.Equal(t, "call_123", result[0].ID)
+		require.Equal(t, "function", result[0].Type)
+		require.Equal(t, "get_weather", result[0].Function.Name)
+		require.Equal(t, `{"location":"Tokyo"}`, result[0].Function.Arguments)
+	})
+
+	t.Run("multiple tool calls", func(t *testing.T) {
+		calls := []openai.ChatCompletionMessageToolCall{
+			{
+				ID:   "call_1",
+				Type: "function",
+				Function: openai.ChatCompletionMessageToolCallFunction{
+					Name:      "func1",
+					Arguments: `{"arg1":"val1"}`,
+				},
+			},
+			{
+				ID:   "call_2",
+				Type: "function",
+				Function: openai.ChatCompletionMessageToolCallFunction{
+					Name:      "func2",
+					Arguments: `{"arg2":"val2"}`,
+				},
+			},
+		}
+
+		result := convertToolCalls(calls)
+		require.Len(t, result, 2)
+		require.Equal(t, "call_1", result[0].ID)
+		require.Equal(t, "call_2", result[1].ID)
+	})
 }
