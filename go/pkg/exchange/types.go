@@ -129,8 +129,9 @@ type Fill struct {
 
 // OrderResponse captures the standard exchange response after an order submission.
 type OrderResponse struct {
-	Status   string            `json:"status"` // "ok" or "err".
-	Response OrderResponseData `json:"response"`
+	Status       string            `json:"status"` // "ok" or "err".
+	Response     OrderResponseData `json:"response"`
+	ErrorMessage string            `json:"-"` // Populated when response is a string (typically error message)
 }
 
 // UnmarshalJSON handles both object and string payloads for the response field.
@@ -156,11 +157,11 @@ func (o *OrderResponse) UnmarshalJSON(data []byte) error {
 		return nil
 	}
 
-	// If that fails, check if it's a string (e.g., "Success")
+	// If that fails, check if it's a string (e.g., "Success" or error message)
 	var respStr string
 	if err := json.Unmarshal(temp.Response, &respStr); err == nil {
-		// It's a string, leave Response as zero value
-		// The status field already indicates success/failure
+		// It's a string, store it in ErrorMessage field
+		o.ErrorMessage = respStr
 		return nil
 	}
 

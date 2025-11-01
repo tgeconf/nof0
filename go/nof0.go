@@ -25,7 +25,7 @@ func main() {
 	server := rest.MustNewServer(cfg.RestConf)
 	defer server.Stop()
 
-	ctx := svc.NewServiceContext(*cfg)
+	ctx := svc.NewServiceContext(*cfg, *configFile)
 	handler.RegisterHandlers(server, ctx)
 
 	fmt.Printf("Starting server at %s:%d...\n", cfg.Host, cfg.Port)

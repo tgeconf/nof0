@@ -6,17 +6,13 @@ import (
 	"math/big"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/ethereum/go-ethereum/crypto"
-	"strings"
 
 	appconfig "nof0-api/internal/config"
 	"nof0-api/internal/svc"
-	exchangecfg "nof0-api/pkg/exchange"
-	executorcfg "nof0-api/pkg/executor"
-	managercfg "nof0-api/pkg/manager"
-	marketcfg "nof0-api/pkg/market"
 )
 
 // genTestPrivKey returns a valid hex-encoded secp256k1 private key for tests.
@@ -71,49 +67,22 @@ func TestMustLoadAndProviders(t *testing.T) {
 		t.Fatalf("write temp main config: %v", err)
 	}
 
-	// Load module configs directly and assemble the top-level config.
-	exCfg, err := exchangecfg.LoadConfig(exch)
+	// Load the main config using the new simplified structure
+	cfg, err := appconfig.Load(mainPath)
 	if err != nil {
-		t.Fatalf("exchange.LoadConfig: %v", err)
-	}
-	mkCfg, err := marketcfg.LoadConfig(mkt)
-	if err != nil {
-		t.Fatalf("market.LoadConfig: %v", err)
-	}
-	execCfg, err := executorcfg.LoadConfig(exec)
-	if err != nil {
-		t.Fatalf("executor.LoadConfig: %v", err)
-	}
-	mgrCfg, err := managercfg.LoadConfig(mgr)
-	if err != nil {
-		t.Fatalf("manager.LoadConfig: %v", err)
-	}
-	cfg := &appconfig.Config{
-		DataPath: "../mcp/data",
-		TTL:      appconfig.CacheTTL{Short: 10, Medium: 60, Long: 300},
-		Executor: appconfig.ExecutorSection{File: exec, Config: execCfg},
-		Manager:  appconfig.ManagerSection{File: mgr, Config: mgrCfg},
-		Exchange: appconfig.ExchangeSection{File: exch, Config: exCfg},
-		Market:   appconfig.MarketSection{File: mkt, Config: mkCfg},
+		t.Fatalf("config.Load: %v", err)
 	}
 
-	// Ensure providers can be built from loaded configs.
-	exProviders, err := cfg.Exchange.Config.BuildProviders()
-	if err != nil {
-		t.Fatalf("BuildProviders(exchange) error: %v", err)
-	}
-	if len(exProviders) == 0 {
+	// ServiceContext should now load module configs internally and wire trader -> providers strictly by ID
+	sc := svc.NewServiceContext(*cfg, mainPath)
+
+	// Verify that providers were built
+	if len(sc.ExchangeProviders) == 0 {
 		t.Fatalf("no exchange providers built")
 	}
-	mkProviders, err := cfg.Market.Config.BuildProviders()
-	if err != nil {
-		t.Fatalf("BuildProviders(market) error: %v", err)
-	}
-	if len(mkProviders) == 0 {
+	if len(sc.MarketProviders) == 0 {
 		t.Fatalf("no market providers built")
 	}
-	// ServiceContext should wire trader -> providers strictly by ID.
-	sc := svc.NewServiceContext(*cfg)
 	if len(sc.ManagerTraderExchange) == 0 || len(sc.ManagerTraderMarket) == 0 {
 		t.Fatalf("manager trader provider mappings not initialised")
 	}

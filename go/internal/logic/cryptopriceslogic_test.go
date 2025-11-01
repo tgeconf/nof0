@@ -15,7 +15,8 @@ func createTestServiceContext(t *testing.T) *svc.ServiceContext {
 	// Create a test service context with test data path
 	cfg := config.Config{}
 	cfg.DataPath = "../../../mcp/data"
-	return svc.NewServiceContext(cfg)
+	// Pass empty path since we're not loading any module configs in this test
+	return svc.NewServiceContext(cfg, "")
 }
 
 func TestCryptoPrices(t *testing.T) {
@@ -63,7 +64,7 @@ func TestCryptoPricesTypes(t *testing.T) {
 func BenchmarkCryptoPrices(b *testing.B) {
 	cfg := config.Config{}
 	cfg.DataPath = "../../../mcp/data"
-	svcCtx := svc.NewServiceContext(cfg)
+	svcCtx := svc.NewServiceContext(cfg, "")
 	logic := NewCryptoPricesLogic(context.Background(), svcCtx)
 
 	b.ResetTimer()

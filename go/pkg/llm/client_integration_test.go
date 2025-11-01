@@ -1,65 +1,22 @@
 //go:build integration
 
-package llm
+package llm_test
 
 import (
 	"context"
-	"os"
-	"path/filepath"
-	"runtime"
 	"testing"
 	"time"
 
-	"github.com/joho/godotenv"
+	appcfg "nof0-api/internal/config"
+	"nof0-api/pkg/llm"
 )
 
-// TestMain loads .env so ZENMUX_API_KEY can be injected easily in local/CI.
-func TestMain(m *testing.M) {
-	// Walk up from this file to find repo root and load .env
-	if _, file, _, ok := runtime.Caller(0); ok {
-		dir := filepath.Dir(file)
-		for i := 0; i < 10; i++ {
-			_ = godotenv.Load(filepath.Join(dir, ".env"))
-			if exists(filepath.Join(dir, "go.mod")) || exists(filepath.Join(dir, ".git")) {
-				break
-			}
-			parent := filepath.Dir(dir)
-			if parent == dir {
-				break
-			}
-			dir = parent
-		}
-	} else {
-		_ = godotenv.Load(".env")
-	}
-	os.Exit(m.Run())
-}
-
-func exists(p string) bool { _, err := os.Stat(p); return err == nil }
-
-// newIntegrationClient builds a client targeting Zenmux with a low-cost model.
-func newIntegrationClient(t *testing.T) *Client {
+// newIntegrationClient builds a client from etc/llm.yaml via internal/config.
+// If config is missing or invalid (e.g., api_key absent), the test fails fast.
+func newIntegrationClient(t *testing.T) *llm.Client {
 	t.Helper()
-
-	apiKey := os.Getenv("ZENMUX_API_KEY")
-	if apiKey == "" {
-		t.Skip("ZENMUX_API_KEY not set; skipping integration test")
-	}
-	baseURL := os.Getenv("ZENMUX_BASE_URL")
-	if baseURL == "" {
-		baseURL = defaultBaseURL
-	}
-
-	cfg := &Config{
-		BaseURL:      baseURL,
-		APIKey:       apiKey,
-		DefaultModel: "google/gemini-2.5-flash-lite", // Use low-cost model
-		Timeout:      15 * time.Second,
-		MaxRetries:   2,
-		LogLevel:     "error",
-	}
-
-	client, err := NewClient(cfg)
+	cfg := appcfg.MustLoadLLM()
+	client, err := llm.NewClient(cfg)
 	if err != nil {
 		t.Fatalf("NewClient: %v", err)
 	}
@@ -74,10 +31,8 @@ func TestIntegration_Chat_LowCostModel(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
 
-	resp, err := client.Chat(ctx, &ChatRequest{
-		Messages: []Message{
-			{Role: "user", Content: "Say a short hello."},
-		},
+	resp, err := client.Chat(ctx, &llm.ChatRequest{
+		Messages: []llm.Message{{Role: "user", Content: "Say a short hello."}},
 	})
 	if err != nil {
 		t.Fatalf("Chat error: %v", err)
@@ -101,9 +56,9 @@ func TestIntegration_Chat_JSONObject_LowCost(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 25*time.Second)
 	defer cancel()
 
-	resp, err := client.Chat(ctx, &ChatRequest{
-		ResponseFormat: &ResponseFormat{Type: "json_object"},
-		Messages:       []Message{{Role: "user", Content: "Respond with a tiny JSON object."}},
+	resp, err := client.Chat(ctx, &llm.ChatRequest{
+		ResponseFormat: &llm.ResponseFormat{Type: "json_object"},
+		Messages:       []llm.Message{{Role: "user", Content: "Respond with a tiny JSON object."}},
 	})
 	if err != nil {
 		t.Fatalf("Chat (json_object) error: %v", err)
@@ -127,8 +82,8 @@ func TestIntegration_ChatStructured_JSONSchema_LowCost(t *testing.T) {
 	}
 
 	var out Result
-	_, err := client.ChatStructured(ctx, &ChatRequest{
-		Messages: []Message{
+	_, err := client.ChatStructured(ctx, &llm.ChatRequest{
+		Messages: []llm.Message{
 			{Role: "system", Content: "You must follow the JSON schema strictly."},
 			{Role: "user", Content: "Return {\"ok\":true}."},
 		},

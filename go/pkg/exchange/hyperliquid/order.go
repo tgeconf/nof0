@@ -213,10 +213,7 @@ func convertOrder(order exchange.Order) (orderPayload, error) {
 	payload.OrderType = orderTypePayload{
 		Limit: &limitOrderPayload{TIF: order.OrderType.Limit.TIF},
 	}
-	// For legacy compatibility, if callers set TriggerPx without Trigger type, include as top-level
-	// fields (some older payload shapes rely on this). Safe to omit otherwise.
-	payload.TriggerPx = order.TriggerPx
-	payload.TriggerRel = order.TriggerRel
+	// Do not set top-level TriggerPx/TriggerRel for limit orders as they are not documented in the API
 	return payload, nil
 }
 

@@ -16,8 +16,6 @@ import (
 	appcfg "nof0-api/internal/config"
 	hl "nof0-api/pkg/exchange/hyperliquid"
 
-	"strconv"
-
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
@@ -123,11 +121,6 @@ func (s *HLIntegrationSuite) Test_OrderLifecycle_Strict() {
 	s.Require().NoError(err, "GetAccountValue")
 
 	minBal := 1.0
-	if v := os.Getenv("HYPERLIQUID_MIN_BALANCE"); v != "" {
-		if parsed, perr := strconv.ParseFloat(v, 64); perr == nil {
-			minBal = parsed
-		}
-	}
 	s.Require().Truef(value >= minBal, "testnet account must have >= %.2f USD (have %.4f)", minBal, value)
 
 	// Place a tiny IOC buy, assert an OK status.

@@ -227,11 +227,37 @@ func (c *Client) CancelOrders(ctx context.Context, cancels []Cancel) error {
 
 // CancelAllOrders cancels all resting orders for the specified asset.
 func (c *Client) CancelAllOrders(ctx context.Context, asset int) error {
-	action := Action{
-		Type:      ActionTypeCancelAll,
-		CancelAll: &CancelAllPayload{Asset: asset},
+	// Get all open orders
+	orders, err := c.GetOpenOrders(ctx)
+	if err != nil {
+		return fmt.Errorf("hyperliquid: failed to get open orders: %w", err)
 	}
-	return c.doExchangeRequest(ctx, action, nil)
+
+	// Filter orders for the specified asset and build cancel list
+	var cancels []Cancel
+	for _, order := range orders {
+		// Get the asset index for this order's coin
+		orderAsset, err := c.GetAssetIndex(ctx, order.Order.Coin)
+		if err != nil {
+			// Skip orders we can't identify
+			continue
+		}
+		// Only cancel orders matching the target asset
+		if orderAsset == asset {
+			cancels = append(cancels, Cancel{
+				Asset: asset,
+				Oid:   order.Order.Oid,
+			})
+		}
+	}
+
+	// If no orders to cancel, return success
+	if len(cancels) == 0 {
+		return nil
+	}
+
+	// Cancel the filtered orders using the standard cancel action
+	return c.CancelOrders(ctx, cancels)
 }
 
 // doInfoRequest queries the public info endpoint.

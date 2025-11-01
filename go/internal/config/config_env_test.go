@@ -4,11 +4,14 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"nof0-api/pkg/llm"
+	"nof0-api/pkg/market"
 )
 
-// Test_hydrateSections_withEnvAndSectionFiles verifies env expansion and
-// per-section hydration without going through go-zero conf.Load.
-func Test_hydrateSections_withEnvAndSectionFiles(t *testing.T) {
+// Test_moduleConfig_envExpansion verifies that module configs expand environment
+// variables correctly when loaded directly via their LoadConfig functions.
+func Test_moduleConfig_envExpansion(t *testing.T) {
 	dir := t.TempDir()
 
 	// Prepare llm.yaml using env placeholders
@@ -47,37 +50,27 @@ providers:
 	t.Setenv("HLIQ_TIMEOUT", "7s")
 	t.Setenv("HLIQ_HTTP_TIMEOUT", "11s")
 
-	// Construct top-level config and hydrate sections
-	cfg := &Config{
-		DataPath: "./data",
-		TTL:      CacheTTL{Short: 10, Medium: 60, Long: 300},
-		LLM:      LLMSection{File: "llm.yaml"},
-		Market:   MarketSection{File: "market.yaml"},
+	// Load LLM config and verify env expansion
+	llmCfg, err := llm.LoadConfig(llmPath)
+	if err != nil {
+		t.Fatalf("llm.LoadConfig: %v", err)
 	}
-	if err := cfg.hydrateSections(filepath.Join(dir, "nof0.yaml")); err != nil {
-		t.Fatalf("hydrateSections: %v", err)
-	}
-	if err := cfg.Validate(); err != nil {
-		t.Fatalf("Validate: %v", err)
-	}
-
-	if cfg.LLM.Config == nil {
-		t.Fatalf("LLM.Config not hydrated")
-	}
-	if got := cfg.LLM.Config.BaseURL; got != "https://zenmux.example/api" {
+	if got := llmCfg.BaseURL; got != "https://zenmux.example/api" {
 		t.Fatalf("LLM.BaseURL not expanded, got %q", got)
 	}
-	if got := cfg.LLM.Config.APIKey; got != "test-key" {
+	if got := llmCfg.APIKey; got != "test-key" {
 		t.Fatalf("LLM.APIKey not expanded, got %q", got)
 	}
-	if got := cfg.LLM.Config.DefaultModel; got != "gpt-x" {
+	if got := llmCfg.DefaultModel; got != "gpt-x" {
 		t.Fatalf("LLM.DefaultModel got %q", got)
 	}
 
-	if cfg.Market.Config == nil {
-		t.Fatalf("Market.Config not hydrated")
+	// Load Market config and verify env expansion
+	mktCfg, err := market.LoadConfig(mktPath)
+	if err != nil {
+		t.Fatalf("market.LoadConfig: %v", err)
 	}
-	p := cfg.Market.Config.Providers["hyper"]
+	p := mktCfg.Providers["hyper"]
 	if p == nil {
 		t.Fatalf("Market provider 'hyper' missing")
 	}

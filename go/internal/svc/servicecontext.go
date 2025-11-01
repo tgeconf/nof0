@@ -9,10 +9,14 @@ import (
 	"nof0-api/internal/config"
 	"nof0-api/internal/data"
 	"nof0-api/internal/model"
+	"nof0-api/pkg/confkit"
 	exchangepkg "nof0-api/pkg/exchange"
+	_ "nof0-api/pkg/exchange/hyperliquid"
 	executorpkg "nof0-api/pkg/executor"
+	llmpkg "nof0-api/pkg/llm"
 	managerpkg "nof0-api/pkg/manager"
 	marketpkg "nof0-api/pkg/market"
+	_ "nof0-api/pkg/market/exchanges/hyperliquid"
 )
 
 type ServiceContext struct {
@@ -20,6 +24,7 @@ type ServiceContext struct {
 
 	DataLoader *data.DataLoader
 
+	LLMConfig              *llmpkg.Config
 	ExecutorConfig         *executorpkg.Config
 	ManagerConfig          *managerpkg.Config
 	ManagerPromptRenderers map[string]*managerpkg.PromptRenderer
@@ -48,21 +53,47 @@ type ServiceContext struct {
 	ConversationMessagesModel   model.ConversationMessagesModel
 }
 
-func NewServiceContext(c config.Config) *ServiceContext {
+func NewServiceContext(c config.Config, mainConfigPath string) *ServiceContext {
 	svc := &ServiceContext{
 		Config:     c,
 		DataLoader: data.NewDataLoader(c.DataPath),
 	}
 
-	if cfg := c.Executor.Config; cfg != nil {
-		svc.ExecutorConfig = cfg
+	baseDir := confkit.BaseDir(mainConfigPath)
+
+	// Load LLM config if specified
+	if c.LLM.File != "" {
+		llmCfg, err := llmpkg.LoadConfig(confkit.ResolvePath(baseDir, c.LLM.File))
+		if err != nil {
+			log.Fatalf("failed to load llm config: %v", err)
+		}
+		// Apply test environment defaults: use low-cost model for good quality
+		if c.IsTestEnv() {
+			llmCfg.DefaultModel = "google/gemini-2.5-flash-lite"
+		}
+		svc.LLMConfig = llmCfg
 	}
 
-	if cfg := c.Manager.Config; cfg != nil {
-		renderers := make(map[string]*managerpkg.PromptRenderer, len(cfg.Traders))
-		digests := make(map[string]string, len(cfg.Traders))
-		for i := range cfg.Traders {
-			trader := &cfg.Traders[i]
+	// Load Executor config if specified
+	if c.Executor.File != "" {
+		executorCfg, err := executorpkg.LoadConfig(confkit.ResolvePath(baseDir, c.Executor.File))
+		if err != nil {
+			log.Fatalf("failed to load executor config: %v", err)
+		}
+		svc.ExecutorConfig = executorCfg
+	}
+
+	// Load Manager config if specified
+	if c.Manager.File != "" {
+		managerCfg, err := managerpkg.LoadConfig(confkit.ResolvePath(baseDir, c.Manager.File))
+		if err != nil {
+			log.Fatalf("failed to load manager config: %v", err)
+		}
+		// Build prompt renderers for each trader
+		renderers := make(map[string]*managerpkg.PromptRenderer, len(managerCfg.Traders))
+		digests := make(map[string]string, len(managerCfg.Traders))
+		for i := range managerCfg.Traders {
+			trader := &managerCfg.Traders[i]
 			renderer, err := managerpkg.NewPromptRenderer(trader.PromptTemplate)
 			if err != nil {
 				log.Fatalf("failed to init manager prompt renderer for trader %s: %v", trader.ID, err)
@@ -70,35 +101,52 @@ func NewServiceContext(c config.Config) *ServiceContext {
 			renderers[trader.ID] = renderer
 			digests[trader.ID] = renderer.Digest()
 		}
-		svc.ManagerConfig = cfg
+		svc.ManagerConfig = managerCfg
 		svc.ManagerPromptRenderers = renderers
 		svc.ManagerPromptDigests = digests
 	}
 
-	if cfg := c.Exchange.Config; cfg != nil {
-		providers, err := cfg.BuildProviders()
+	// Load Exchange config if specified
+	if c.Exchange.File != "" {
+		exchangeCfg, err := exchangepkg.LoadConfig(confkit.ResolvePath(baseDir, c.Exchange.File))
 		if err != nil {
-			log.Fatalf("failed to init exchange providers: %v", err)
+			log.Fatalf("failed to load exchange config: %v", err)
 		}
-		svc.ExchangeConfig = cfg
+		// Apply test environment defaults: use testnet endpoints for all providers
+		if c.IsTestEnv() {
+			for _, provider := range exchangeCfg.Providers {
+				provider.Testnet = true
+			}
+		}
+		providers, err := exchangeCfg.BuildProviders()
+		if err != nil {
+			log.Fatalf("failed to build exchange providers: %v", err)
+		}
+		svc.ExchangeConfig = exchangeCfg
 		svc.ExchangeProviders = providers
-		if cfg.Default != "" {
-			svc.DefaultExchange = providers[cfg.Default]
+		if exchangeCfg.Default != "" {
+			svc.DefaultExchange = providers[exchangeCfg.Default]
 		}
 	}
 
-	if cfg := c.Market.Config; cfg != nil {
-		providers, err := cfg.BuildProviders()
+	// Load Market config if specified
+	if c.Market.File != "" {
+		marketCfg, err := marketpkg.LoadConfig(confkit.ResolvePath(baseDir, c.Market.File))
 		if err != nil {
-			log.Fatalf("failed to init market providers: %v", err)
+			log.Fatalf("failed to load market config: %v", err)
 		}
-		svc.MarketConfig = cfg
+		providers, err := marketCfg.BuildProviders()
+		if err != nil {
+			log.Fatalf("failed to build market providers: %v", err)
+		}
+		svc.MarketConfig = marketCfg
 		svc.MarketProviders = providers
-		if cfg.Default != "" {
-			svc.DefaultMarket = providers[cfg.Default]
+		if marketCfg.Default != "" {
+			svc.DefaultMarket = providers[marketCfg.Default]
 		}
 	}
 
+	// Validate cross-module references: manager trader -> exchange/market providers
 	if svc.ManagerConfig != nil {
 		svc.ManagerTraderExchange = make(map[string]exchangepkg.Provider, len(svc.ManagerConfig.Traders))
 		svc.ManagerTraderMarket = make(map[string]marketpkg.Provider, len(svc.ManagerConfig.Traders))

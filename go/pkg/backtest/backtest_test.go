@@ -5,8 +5,9 @@ import (
 	"math"
 	"testing"
 
-	"github.com/stretchr/testify/assert"
 	simex "nof0-api/pkg/exchange/sim"
+
+	"github.com/stretchr/testify/assert"
 )
 
 func TestBacktest_ThresholdWithSim(t *testing.T) {

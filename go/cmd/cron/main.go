@@ -11,6 +11,7 @@ import (
 
 	// Import for side-effects: loads .env file
 	_ "nof0-api/internal/bootstrap/dotenv"
+	"nof0-api/internal/config"
 	"nof0-api/pkg/exchange"
 	"nof0-api/pkg/market"
 
@@ -37,6 +38,37 @@ func main() {
 	log.SetFlags(log.Ldate | log.Ltime | log.Lmicroseconds)
 	log.Println("[main] Starting cron monitor...")
 
+	// Load application configuration
+	var appCfg *config.Config
+	var err error
+	configPath := "etc/nof0.yaml"
+	appCfg, err = config.Load(configPath)
+	if err != nil {
+		log.Printf("[main] Warning: Failed to load app config: %v", err)
+		log.Printf("[main] Using default configuration")
+		appCfg = &config.Config{Env: "test"} // Default fallback
+	}
+
+	// Log configuration information
+	log.Printf("[main] Configuration loaded:")
+	log.Printf("  - Environment: %s", appCfg.Env)
+	log.Printf("  - DataPath: %s", appCfg.DataPath)
+	if appCfg.Postgres.DSN != "" {
+		log.Printf("  - Postgres: Configured")
+	} else {
+		log.Printf("  - Postgres: Not configured")
+	}
+	if appCfg.Redis.Host != "" {
+		log.Printf("  - Redis: %s", appCfg.Redis.Host)
+	} else {
+		log.Printf("  - Redis: Not configured")
+	}
+	log.Printf("  - TTL Settings: short=%ds, medium=%ds, long=%ds", appCfg.TTL.Short, appCfg.TTL.Medium, appCfg.TTL.Long)
+	log.Printf("  - Market Config Path: %s", marketConfigPath)
+	log.Printf("  - Exchange Config Path: %s", exchangeConfigPath)
+	log.Printf("  - Monitored Symbols: %v", monitoredSymbols)
+	log.Printf("  - Monitoring Intervals: market=%s, exchange=%s", marketInterval, exchangeInterval)
+
 	// Load market configuration
 	marketCfg, err := market.LoadConfig(marketConfigPath)
 	if err != nil {
@@ -59,6 +91,13 @@ func main() {
 	exchangeCfg, err := exchange.LoadConfig(exchangeConfigPath)
 	if err != nil {
 		log.Fatalf("[main] Failed to load exchange config: %v", err)
+	}
+
+	// Apply test environment defaults: use testnet endpoints for all providers
+	if appCfg.IsTestEnv() {
+		for _, provider := range exchangeCfg.Providers {
+			provider.Testnet = true
+		}
 	}
 
 	// Build exchange providers

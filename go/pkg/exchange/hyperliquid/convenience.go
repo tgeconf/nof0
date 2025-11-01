@@ -91,8 +91,17 @@ func (c *Client) IOCMarket(ctx context.Context, coin string, isBuy bool, qty flo
 		return nil, err
 	}
 	// Check for error status in response
-	if resp.Status == "err" && len(resp.Response.Data.Statuses) > 0 && resp.Response.Data.Statuses[0].Error != "" {
-		return resp, fmt.Errorf("hyperliquid: order rejected: %s", resp.Response.Data.Statuses[0].Error)
+	if resp.Status == "err" {
+		// Try to extract detailed error message
+		if len(resp.Response.Data.Statuses) > 0 && resp.Response.Data.Statuses[0].Error != "" {
+			return resp, fmt.Errorf("hyperliquid: order rejected: %s", resp.Response.Data.Statuses[0].Error)
+		}
+		// Check if error message is in string format
+		if resp.ErrorMessage != "" {
+			return resp, fmt.Errorf("hyperliquid: order rejected: %s", resp.ErrorMessage)
+		}
+		// Return generic error if no details available
+		return resp, fmt.Errorf("hyperliquid: order rejected with status 'err' (no error details provided)")
 	}
 	return resp, nil
 }
