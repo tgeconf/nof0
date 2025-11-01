@@ -5,6 +5,10 @@ providers:
     type: hyperliquid
     # Hex-encoded private key used for trade signing; inject via environment variable.
     private_key: ${HYPERLIQUID_PRIVATE_KEY}
+    # Main account address for info requests (required when using API wallet).
+    # API wallets can perform actions on behalf of your account without withdrawal permissions.
+    # Info requests must still use your main account's public address.
+    main_address: ${HYPERLIQUID_MAIN_ADDRESS}
     # true to route requests to Hyperliquid testnet endpoints.
     testnet: false
     # Optional request timeout override for exchange HTTP client.

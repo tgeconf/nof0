@@ -1,13 +1,13 @@
 package hyperliquid
 
 import (
-    "log"
-    "net/http"
-    "testing"
-    "time"
+	"log"
+	"net/http"
+	"testing"
+	"time"
 
-    "github.com/stretchr/testify/assert"
-    "github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/common"
+	"github.com/stretchr/testify/assert"
 )
 
 func TestClientOptions(t *testing.T) {
@@ -40,13 +40,13 @@ func TestClientOptions(t *testing.T) {
 	})
 
 	// Test WithVaultAddress
-    t.Run("WithVaultAddress", func(t *testing.T) {
-        validAddress := "0x742d35Cc6634C0532925a3b8D4C0cD9D7fD703b0"
-        client, err := NewClient("0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a741b52d7c5d5095e2f", false, WithVaultAddress(validAddress))
-        assert.NoError(t, err)
-        // Compare against canonical checksum representation
-        assert.Equal(t, common.HexToAddress(validAddress).Hex(), client.vault)
-    })
+	t.Run("WithVaultAddress", func(t *testing.T) {
+		validAddress := "0x742d35Cc6634C0532925a3b8D4C0cD9D7fD703b0"
+		client, err := NewClient("0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a741b52d7c5d5095e2f", false, WithVaultAddress(validAddress))
+		assert.NoError(t, err)
+		// Compare against canonical checksum representation
+		assert.Equal(t, common.HexToAddress(validAddress).Hex(), client.vault)
+	})
 
 	t.Run("WithVaultAddress_invalid", func(t *testing.T) {
 		invalidAddress := "invalid_address"

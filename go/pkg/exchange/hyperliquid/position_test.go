@@ -14,34 +14,31 @@ func TestGetPositions(t *testing.T) {
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusOK)
 			w.Write([]byte(`{
-				"status": "ok",
-				"data": {
-					"assetPositions": [
-						{
-							"coin": "BTC",
-							"entryPx": "50000.0",
-							"leverage": {"type": "cross", "value": 5},
-							"liquidationPx": "45000.0",
-							"positionValue": "5000.0",
-							"returnOnEquity": "0.05",
-							"szi": "0.1",
-							"unrealizedPnl": "100.0"
-						}
-					],
-					"marginSummary": {
-						"accountValue": "10000.0",
-						"totalMarginUsed": "500.0",
-						"totalNtlPos": "2000.0",
-						"totalRawUsd": "9500.0"
-					},
-					"crossMarginSummary": {
-						"accountValue": "10000.0",
-						"totalMarginUsed": "500.0",
-						"totalNtlPos": "2000.0",
-						"totalRawUsd": "9500.0"
-					}
-				}
-			}`))
+                    "assetPositions": [
+                        {
+                            "coin": "BTC",
+                            "entryPx": "50000.0",
+                            "leverage": {"type": "cross", "value": 5},
+                            "liquidationPx": "45000.0",
+                            "positionValue": "5000.0",
+                            "returnOnEquity": "0.05",
+                            "szi": "0.1",
+                            "unrealizedPnl": "100.0"
+                        }
+                    ],
+                    "marginSummary": {
+                        "accountValue": "10000.0",
+                        "totalMarginUsed": "500.0",
+                        "totalNtlPos": "2000.0",
+                        "totalRawUsd": "9500.0"
+                    },
+                    "crossMarginSummary": {
+                        "accountValue": "10000.0",
+                        "totalMarginUsed": "500.0",
+                        "totalNtlPos": "2000.0",
+                        "totalRawUsd": "9500.0"
+                    }
+            }`))
 		}))
 		defer server.Close()
 
@@ -60,23 +57,20 @@ func TestGetPositions(t *testing.T) {
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusOK)
 			w.Write([]byte(`{
-				"status": "ok",
-				"data": {
-					"assetPositions": [],
-					"marginSummary": {
-						"accountValue": "10000.0",
-						"totalMarginUsed": "0",
-						"totalNtlPos": "0",
-						"totalRawUsd": "10000.0"
-					},
-					"crossMarginSummary": {
-						"accountValue": "10000.0",
-						"totalMarginUsed": "0",
-						"totalNtlPos": "0",
-						"totalRawUsd": "10000.0"
-					}
-				}
-			}`))
+                    "assetPositions": [],
+                    "marginSummary": {
+                        "accountValue": "10000.0",
+                        "totalMarginUsed": "0",
+                        "totalNtlPos": "0",
+                        "totalRawUsd": "10000.0"
+                    },
+                    "crossMarginSummary": {
+                        "accountValue": "10000.0",
+                        "totalMarginUsed": "0",
+                        "totalNtlPos": "0",
+                        "totalRawUsd": "10000.0"
+                    }
+            }`))
 		}))
 		defer server.Close()
 
@@ -95,23 +89,20 @@ func TestClosePosition(t *testing.T) {
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusOK)
 			w.Write([]byte(`{
-				"status": "ok",
-				"data": {
-					"assetPositions": [],
-					"marginSummary": {
-						"accountValue": "10000.0",
-						"totalMarginUsed": "0",
-						"totalNtlPos": "0",
-						"totalRawUsd": "10000.0"
-					},
-					"crossMarginSummary": {
-						"accountValue": "10000.0",
-						"totalMarginUsed": "0",
-						"totalNtlPos": "0",
-						"totalRawUsd": "10000.0"
-					}
-				}
-			}`))
+                    "assetPositions": [],
+                    "marginSummary": {
+                        "accountValue": "10000.0",
+                        "totalMarginUsed": "0",
+                        "totalNtlPos": "0",
+                        "totalRawUsd": "10000.0"
+                    },
+                    "crossMarginSummary": {
+                        "accountValue": "10000.0",
+                        "totalMarginUsed": "0",
+                        "totalNtlPos": "0",
+                        "totalRawUsd": "10000.0"
+                    }
+            }`))
 		}))
 		defer server.Close()
 

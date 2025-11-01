@@ -75,6 +75,10 @@ type Config struct {
 	Market   MarketSection   `json:",optional"`
 }
 
+func (c *Config) IsTestEnv() bool {
+	return c.Env == "test" || c.Env == ""
+}
+
 func MustLoad(path string) *Config {
 	cfg, err := Load(path)
 	if err != nil {
@@ -225,7 +229,7 @@ func (c *Config) loadLLM(baseDir string) error {
 	c.LLM.File = path
 	// If running in test environment, use a low-cost model directly.
 	// Using google/gemini-2.5-flash-lite for good quality at low cost.
-	if strings.EqualFold(c.Env, "test") {
+	if c.IsTestEnv() {
 		cfg.DefaultModel = "google/gemini-2.5-flash-lite"
 	}
 	c.LLM.Config = cfg

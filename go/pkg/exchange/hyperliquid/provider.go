@@ -1,45 +1,45 @@
 package hyperliquid
 
 import (
-    "context"
-    "net/http"
-    "strings"
+	"context"
+	"net/http"
+	"strings"
 
-    "nof0-api/pkg/exchange"
+	"nof0-api/pkg/exchange"
 )
 
 // Provider wraps Client to satisfy the exchange.Provider interface.
 // clientAPI captures the subset of client behavior the provider relies on.
 type clientAPI interface {
-    PlaceOrder(ctx context.Context, order exchange.Order) (*exchange.OrderResponse, error)
-    CancelOrder(ctx context.Context, asset int, oid int64) error
-    GetOpenOrders(ctx context.Context) ([]exchange.OrderStatus, error)
-    GetPositions(ctx context.Context) ([]exchange.Position, error)
-    ClosePosition(ctx context.Context, coin string) error
-    UpdateLeverage(ctx context.Context, asset int, isCross bool, leverage int) error
-    GetAccountState(ctx context.Context) (*exchange.AccountState, error)
-    GetAccountValue(ctx context.Context) (float64, error)
-    GetAssetIndex(ctx context.Context, coin string) (int, error)
+	PlaceOrder(ctx context.Context, order exchange.Order) (*exchange.OrderResponse, error)
+	CancelOrder(ctx context.Context, asset int, oid int64) error
+	GetOpenOrders(ctx context.Context) ([]exchange.OrderStatus, error)
+	GetPositions(ctx context.Context) ([]exchange.Position, error)
+	ClosePosition(ctx context.Context, coin string) error
+	UpdateLeverage(ctx context.Context, asset int, isCross bool, leverage int) error
+	GetAccountState(ctx context.Context) (*exchange.AccountState, error)
+	GetAccountValue(ctx context.Context) (float64, error)
+	GetAssetIndex(ctx context.Context, coin string) (int, error)
 
-    // Convenience methods used by the provider
-    IOCMarket(ctx context.Context, coin string, isBuy bool, qty float64, slippage float64, reduceOnly bool) (*exchange.OrderResponse, error)
-    PlaceTriggerReduceOnly(ctx context.Context, coin string, isBuy bool, qty float64, triggerPrice float64, tpsl string) error
-    CancelAllOrders(ctx context.Context, asset int) error
-    FormatSize(ctx context.Context, coin string, qty float64) (string, error)
-    FormatPrice(ctx context.Context, coin string, price float64) (string, error)
+	// Convenience methods used by the provider
+	IOCMarket(ctx context.Context, coin string, isBuy bool, qty float64, slippage float64, reduceOnly bool) (*exchange.OrderResponse, error)
+	PlaceTriggerReduceOnly(ctx context.Context, coin string, isBuy bool, qty float64, triggerPrice float64, tpsl string) error
+	CancelAllOrders(ctx context.Context, asset int) error
+	FormatSize(ctx context.Context, coin string, qty float64) (string, error)
+	FormatPrice(ctx context.Context, coin string, price float64) (string, error)
 }
 
 type Provider struct {
-    client clientAPI
+	client clientAPI
 }
 
 // NewProvider constructs a Hyperliquid exchange provider.
 func NewProvider(privateKeyHex string, isTestnet bool, opts ...ClientOption) (*Provider, error) {
-    client, err := NewClient(privateKeyHex, isTestnet, opts...)
-    if err != nil {
-        return nil, err
-    }
-    return &Provider{client: client}, nil
+	client, err := NewClient(privateKeyHex, isTestnet, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return &Provider{client: client}, nil
 }
 
 func init() {
@@ -50,6 +50,9 @@ func init() {
 		}
 		if cfg.VaultAddress != "" {
 			opts = append(opts, WithVaultAddress(cfg.VaultAddress))
+		}
+		if cfg.MainAddress != "" {
+			opts = append(opts, WithMainAddress(cfg.MainAddress))
 		}
 		return NewProvider(cfg.PrivateKey, cfg.Testnet, opts...)
 	})

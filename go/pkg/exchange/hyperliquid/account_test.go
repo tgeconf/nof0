@@ -10,25 +10,22 @@ import (
 )
 
 func TestGetAccountState(t *testing.T) {
-	t.Run("success", func(t *testing.T) {
+	t.Run("success_raw_object", func(t *testing.T) {
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusOK)
 			w.Write([]byte(`{
-				"status": "ok",
-				"data": {
-					"assetPositions": [],
-					"crossMarginSummary": {
-						"accountValue": "10000.5"
-					},
-					"marginSummary": {
-						"accountValue": "10000.5",
-						"totalMarginUsed": "500.0",
-						"totalNtlPos": "2000.0",
-						"totalRawUsd": "9500.5"
-					},
-					"withdrawable": "9000.0"
-				}
-			}`))
+                "assetPositions": [],
+                "crossMarginSummary": {
+                    "accountValue": "10000.5"
+                },
+                "marginSummary": {
+                    "accountValue": "10000.5",
+                    "totalMarginUsed": "500.0",
+                    "totalNtlPos": "2000.0",
+                    "totalRawUsd": "9500.5"
+                },
+                "withdrawable": "9000.0"
+            }`))
 		}))
 		defer server.Close()
 
@@ -49,10 +46,10 @@ func TestGetAccountState(t *testing.T) {
 		assert.Contains(t, err.Error(), "address unavailable")
 	})
 
-	t.Run("non_ok_status", func(t *testing.T) {
+	t.Run("missing_fields", func(t *testing.T) {
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusOK)
-			w.Write([]byte(`{"status": "error"}`))
+			w.Write([]byte(`{"assetPositions": []}`))
 		}))
 		defer server.Close()
 
@@ -62,23 +59,7 @@ func TestGetAccountState(t *testing.T) {
 
 		_, err = client.GetAccountState(context.Background())
 		assert.Error(t, err)
-		assert.Contains(t, err.Error(), "status")
-	})
-
-	t.Run("missing_data", func(t *testing.T) {
-		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			w.WriteHeader(http.StatusOK)
-			w.Write([]byte(`{"status": "ok"}`))
-		}))
-		defer server.Close()
-
-		client, err := NewClient("0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a741b52d7c5d5095e2f", false)
-		assert.NoError(t, err)
-		client.infoURL = server.URL
-
-		_, err = client.GetAccountState(context.Background())
-		assert.Error(t, err)
-		assert.Contains(t, err.Error(), "missing data")
+		assert.Contains(t, err.Error(), "missing fields")
 	})
 }
 
@@ -87,14 +68,11 @@ func TestGetAccountValue(t *testing.T) {
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusOK)
 			w.Write([]byte(`{
-				"status": "ok",
-				"data": {
-					"assetPositions": [],
-					"marginSummary": {
-						"accountValue": "12345.67"
-					}
-				}
-			}`))
+                "assetPositions": [],
+                "marginSummary": {
+                    "accountValue": "12345.67"
+                }
+            }`))
 		}))
 		defer server.Close()
 
@@ -111,13 +89,10 @@ func TestGetAccountValue(t *testing.T) {
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusOK)
 			w.Write([]byte(`{
-				"status": "ok",
-				"data": {
-					"marginSummary": {
-						"accountValue": "invalid"
-					}
-				}
-			}`))
+                "marginSummary": {
+                    "accountValue": "invalid"
+                }
+            }`))
 		}))
 		defer server.Close()
 

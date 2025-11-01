@@ -1,5 +1,10 @@
 package exchange
 
+import (
+	"encoding/json"
+	"fmt"
+)
+
 // Core trading domain types shared across exchange implementations.
 // These structures mirror the Hyperliquid API payloads while remaining exchange-agnostic
 // to keep the public interface consistent if additional venues are added later.
@@ -126,6 +131,41 @@ type Fill struct {
 type OrderResponse struct {
 	Status   string            `json:"status"` // "ok" or "err".
 	Response OrderResponseData `json:"response"`
+}
+
+// UnmarshalJSON handles both object and string payloads for the response field.
+// The API sometimes returns {"status":"ok","response":"Success"} for certain operations.
+func (o *OrderResponse) UnmarshalJSON(data []byte) error {
+	// Try the standard format first
+	type alias OrderResponse
+	var temp struct {
+		Status   string          `json:"status"`
+		Response json.RawMessage `json:"response"`
+	}
+
+	if err := json.Unmarshal(data, &temp); err != nil {
+		return err
+	}
+
+	o.Status = temp.Status
+
+	// Try to unmarshal response as object first
+	var respData OrderResponseData
+	if err := json.Unmarshal(temp.Response, &respData); err == nil {
+		o.Response = respData
+		return nil
+	}
+
+	// If that fails, check if it's a string (e.g., "Success")
+	var respStr string
+	if err := json.Unmarshal(temp.Response, &respStr); err == nil {
+		// It's a string, leave Response as zero value
+		// The status field already indicates success/failure
+		return nil
+	}
+
+	// Neither worked, return an error
+	return fmt.Errorf("response field is neither OrderResponseData nor string")
 }
 
 // OrderResponseData wraps the response payload.

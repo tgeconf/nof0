@@ -11,23 +11,22 @@ import (
 
 // GetAccountState fetches the clearinghouse state for the signer address.
 func (c *Client) GetAccountState(ctx context.Context) (*exchange.AccountState, error) {
-	if c.address == "" {
+	infoAddr := c.getInfoAddress()
+	if infoAddr == "" {
 		return nil, fmt.Errorf("hyperliquid: client address unavailable")
 	}
-	var resp AccountStateResponse
+	var state exchange.AccountState
 	if err := c.doInfoRequest(ctx, InfoRequest{
 		Type: "clearinghouseState",
-		User: c.address,
-	}, &resp); err != nil {
+		User: infoAddr,
+	}, &state); err != nil {
 		return nil, err
 	}
-	if strings.ToLower(resp.Status) != "ok" {
-		return nil, fmt.Errorf("hyperliquid: clearinghouseState status %q", resp.Status)
+	// Basic sanity check: margin summary should be present
+	if strings.TrimSpace(state.MarginSummary.AccountValue) == "" && strings.TrimSpace(state.CrossMarginSummary.AccountValue) == "" {
+		return nil, fmt.Errorf("hyperliquid: clearinghouseState missing fields")
 	}
-	if resp.Data == nil {
-		return nil, fmt.Errorf("hyperliquid: clearinghouseState missing data")
-	}
-	return resp.Data, nil
+	return &state, nil
 }
 
 // GetAccountValue returns the account value parsed as float64.

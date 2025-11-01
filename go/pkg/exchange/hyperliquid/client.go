@@ -33,7 +33,8 @@ type Client struct {
 	exchangeURL string
 	httpClient  *http.Client
 	signer      Signer
-	address     string
+	address     string // API wallet address (derived from signer)
+	mainAddress string // Main account address (for info requests when using API wallet)
 	isTestnet   bool
 	logger      *log.Logger
 	clock       func() time.Time
@@ -82,6 +83,18 @@ func WithVaultAddress(addr string) ClientOption {
 	}
 }
 
+// WithMainAddress configures the main account address for info requests.
+// This is used when the API wallet (agent wallet) is different from the main account.
+// Info requests must use the main account's public address, while exchange requests
+// are signed by the API wallet on behalf of the main account.
+func WithMainAddress(addr string) ClientOption {
+	return func(c *Client) {
+		if common.IsHexAddress(addr) {
+			c.mainAddress = common.HexToAddress(addr).Hex()
+		}
+	}
+}
+
 // WithClock overrides the time source (primarily for testing).
 func WithClock(clock func() time.Time) ClientOption {
 	return func(c *Client) {
@@ -119,6 +132,16 @@ func WithAssetCacheTTL(ttl time.Duration) ClientOption {
 			c.assetTTL = ttl
 		}
 	}
+}
+
+// getInfoAddress returns the address to use for info requests.
+// If mainAddress is configured (API wallet scenario), it returns mainAddress.
+// Otherwise, it returns the signer's address.
+func (c *Client) getInfoAddress() string {
+	if c.mainAddress != "" {
+		return c.mainAddress
+	}
+	return c.address
 }
 
 // NewClient constructs a Hyperliquid trading client using the provided private key.
@@ -260,6 +283,38 @@ func (c *Client) doInfoRequest(ctx context.Context, req InfoRequest, result inte
 		return lastErr
 	}
 	return fmt.Errorf("hyperliquid: info request failed")
+}
+
+// GetSubAccounts retrieves the list of subaccounts for a master user address.
+func (c *Client) GetSubAccounts(ctx context.Context, user string) ([]SubAccount, error) {
+	if !common.IsHexAddress(user) {
+		return nil, fmt.Errorf("hyperliquid: invalid user address %q", user)
+	}
+	var out []SubAccount
+	err := c.doInfoRequest(ctx, InfoRequest{Type: "subAccounts", User: common.HexToAddress(user).Hex()}, &out)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// GetVaultDetails retrieves vault details by address (optionally scoped by user).
+func (c *Client) GetVaultDetails(ctx context.Context, vaultAddress string, user string) (*VaultDetails, error) {
+	if !common.IsHexAddress(vaultAddress) {
+		return nil, fmt.Errorf("hyperliquid: invalid vault address %q", vaultAddress)
+	}
+	req := InfoRequest{Type: "vaultDetails", VaultAddress: common.HexToAddress(vaultAddress).Hex()}
+	if user != "" {
+		if !common.IsHexAddress(user) {
+			return nil, fmt.Errorf("hyperliquid: invalid user address %q", user)
+		}
+		req.User = common.HexToAddress(user).Hex()
+	}
+	var out VaultDetails
+	if err := c.doInfoRequest(ctx, req, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
 }
 
 // doExchangeRequest signs and submits an exchange action.

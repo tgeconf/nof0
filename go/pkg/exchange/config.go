@@ -25,6 +25,7 @@ type ProviderConfig struct {
 	APISecret    string `yaml:"api_secret"`
 	Passphrase   string `yaml:"passphrase"`
 	VaultAddress string `yaml:"vault_address"`
+	MainAddress  string `yaml:"main_address"` // Main account address (for API wallet scenarios)
 	Testnet      bool   `yaml:"testnet"`
 
 	TimeoutRaw string        `yaml:"timeout"`
@@ -57,20 +58,20 @@ func lookupProviderBuilder(typeName string) (ProviderBuilder, bool) {
 // the provided configuration. This is a convenience for tests and callers that
 // want to instantiate a provider without building a full config map.
 func GetProvider(typeName string, cfg *ProviderConfig) (Provider, error) {
-    if cfg == nil {
-        cfg = &ProviderConfig{}
-    }
-    // Ensure the type is set and valid for validation.
-    cfgCopy := *cfg
-    cfgCopy.Type = typeName
-    if err := cfgCopy.validate("inline"); err != nil {
-        return nil, err
-    }
-    builder, ok := lookupProviderBuilder(cfgCopy.Type)
-    if !ok {
-        return nil, fmt.Errorf("exchange provider: unsupported type %q", cfgCopy.Type)
-    }
-    return builder("inline", &cfgCopy)
+	if cfg == nil {
+		cfg = &ProviderConfig{}
+	}
+	// Ensure the type is set and valid for validation.
+	cfgCopy := *cfg
+	cfgCopy.Type = typeName
+	if err := cfgCopy.validate("inline"); err != nil {
+		return nil, err
+	}
+	builder, ok := lookupProviderBuilder(cfgCopy.Type)
+	if !ok {
+		return nil, fmt.Errorf("exchange provider: unsupported type %q", cfgCopy.Type)
+	}
+	return builder("inline", &cfgCopy)
 }
 
 // LoadConfig reads configuration from disk.
@@ -127,6 +128,7 @@ func (p *ProviderConfig) expandEnv() {
 	p.APISecret = strings.TrimSpace(os.ExpandEnv(p.APISecret))
 	p.Passphrase = strings.TrimSpace(os.ExpandEnv(p.Passphrase))
 	p.VaultAddress = strings.TrimSpace(os.ExpandEnv(p.VaultAddress))
+	p.MainAddress = strings.TrimSpace(os.ExpandEnv(p.MainAddress))
 	p.TimeoutRaw = strings.TrimSpace(os.ExpandEnv(p.TimeoutRaw))
 }
 

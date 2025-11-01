@@ -86,7 +86,15 @@ func (c *Client) IOCMarket(ctx context.Context, coin string, isBuy bool, qty flo
 		ReduceOnly: reduceOnly,
 		OrderType:  exchange.OrderType{Limit: &exchange.LimitOrderType{TIF: "Ioc"}},
 	}
-	return c.PlaceOrder(ctx, order)
+	resp, err := c.PlaceOrder(ctx, order)
+	if err != nil {
+		return nil, err
+	}
+	// Check for error status in response
+	if resp.Status == "err" && len(resp.Response.Data.Statuses) > 0 && resp.Response.Data.Statuses[0].Error != "" {
+		return resp, fmt.Errorf("hyperliquid: order rejected: %s", resp.Response.Data.Statuses[0].Error)
+	}
+	return resp, nil
 }
 
 // PlaceTriggerReduceOnly creates a reduce-only trigger order (TP/SL style).
@@ -104,9 +112,12 @@ func (c *Client) PlaceTriggerReduceOnly(ctx context.Context, coin string, isBuy 
 		return err
 	}
 	tp := RoundPriceToSigFigs(triggerPx, 5)
+	// For trigger orders with isMarket, use an aggressive limit price as safety
+	limitPx := aggressiveLimitPrice(isBuy)
 	ord := exchange.Order{
 		Asset:      idx,
 		IsBuy:      isBuy,
+		LimitPx:    limitPx,
 		Sz:         size,
 		ReduceOnly: true,
 		TriggerPx:  tp,

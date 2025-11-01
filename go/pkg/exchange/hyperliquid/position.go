@@ -64,8 +64,8 @@ func (c *Client) UpdateLeverage(ctx context.Context, asset int, isCross bool, le
 	}
 	action := Action{
 		Type:     ActionTypeUpdateLeverage,
-		Asset:    asset,
-		IsCross:  isCross,
+		Asset:    &asset,
+		IsCross:  &isCross,
 		Leverage: leverage,
 	}
 	return c.doExchangeRequest(ctx, action, nil)

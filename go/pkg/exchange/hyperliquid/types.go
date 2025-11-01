@@ -28,8 +28,8 @@ type Action struct {
 	Cancels   []cancelPayload   `json:"cancels,omitempty" msgpack:"cancels,omitempty"`
 	CancelAll *CancelAllPayload `json:"cancelAll,omitempty" msgpack:"cancelAll,omitempty"`
 	Grouping  string            `json:"grouping,omitempty" msgpack:"grouping,omitempty"`
-	Asset     int               `json:"asset,omitempty" msgpack:"asset,omitempty"`
-	IsCross   bool              `json:"isCross,omitempty" msgpack:"isCross,omitempty"`
+	Asset     *int              `json:"asset,omitempty" msgpack:"asset,omitempty"`
+	IsCross   *bool             `json:"isCross,omitempty" msgpack:"isCross,omitempty"`
 	Leverage  int               `json:"leverage,omitempty" msgpack:"leverage,omitempty"`
 }
 
@@ -98,6 +98,8 @@ type Signature struct {
 type InfoRequest struct {
 	Type string `json:"type"`
 	User string `json:"user,omitempty"`
+	// For vaultDetails endpoint
+	VaultAddress string `json:"vaultAddress,omitempty"`
 }
 
 // AccountStateResponse wraps account state returned by Hyperliquid.
@@ -208,4 +210,48 @@ type EIP712Domain struct {
 	Version           string
 	ChainID           int
 	VerifyingContract string
+}
+
+// SubAccounts (info endpoint: type=subAccounts) response items.
+type SubAccount struct {
+	Name               string                `json:"name"`
+	SubAccountUser     string                `json:"subAccountUser"`
+	Master             string                `json:"master"`
+	ClearinghouseState exchange.AccountState `json:"clearinghouseState"`
+	SpotState          *SpotState            `json:"spotState,omitempty"`
+}
+
+type SpotState struct {
+	Balances []SpotBalance `json:"balances"`
+}
+
+type SpotBalance struct {
+	Coin     string `json:"coin"`
+	Token    int    `json:"token"`
+	Total    string `json:"total"`
+	Hold     string `json:"hold"`
+	EntryNtl string `json:"entryNtl"`
+}
+
+// VaultDetails (info endpoint: type=vaultDetails) response.
+type VaultDetails struct {
+	Name                  string          `json:"name"`
+	VaultAddress          string          `json:"vaultAddress"`
+	Leader                string          `json:"leader"`
+	Description           string          `json:"description"`
+	APR                   float64         `json:"apr"`
+	Followers             []VaultFollower `json:"followers"`
+	MaxDistributable      float64         `json:"maxDistributable"`
+	MaxWithdrawable       float64         `json:"maxWithdrawable"`
+	IsClosed              bool            `json:"isClosed"`
+	AllowDeposits         bool            `json:"allowDeposits"`
+	AlwaysCloseOnWithdraw bool            `json:"alwaysCloseOnWithdraw"`
+}
+
+type VaultFollower struct {
+	User          string `json:"user"`
+	VaultEquity   string `json:"vaultEquity"`
+	PnL           string `json:"pnl"`
+	AllTimePnL    string `json:"allTimePnl"`
+	DaysFollowing int    `json:"daysFollowing"`
 }

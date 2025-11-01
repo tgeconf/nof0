@@ -105,10 +105,10 @@ func TestClientCancelOrder(t *testing.T) {
 	assert.NoError(t, err)
 
 	// Test valid cancel
-    t.Run("valid_cancel", func(t *testing.T) {
-        // Network behavior may vary by environment; ensure call does not panic.
-        _ = client.CancelOrder(context.Background(), 1, 12345)
-    })
+	t.Run("valid_cancel", func(t *testing.T) {
+		// Network behavior may vary by environment; ensure call does not panic.
+		_ = client.CancelOrder(context.Background(), 1, 12345)
+	})
 }
 
 func TestClientCancelOrders(t *testing.T) {
@@ -116,14 +116,14 @@ func TestClientCancelOrders(t *testing.T) {
 	assert.NoError(t, err)
 
 	// Test valid cancels
-    t.Run("valid_cancels", func(t *testing.T) {
-        cancels := []Cancel{
-            {Asset: 1, Oid: 12345},
-            {Asset: 2, Oid: 12346},
-        }
-        // Network behavior may vary by environment; ensure call does not panic.
-        _ = client.CancelOrders(context.Background(), cancels)
-    })
+	t.Run("valid_cancels", func(t *testing.T) {
+		cancels := []Cancel{
+			{Asset: 1, Oid: 12345},
+			{Asset: 2, Oid: 12346},
+		}
+		// Network behavior may vary by environment; ensure call does not panic.
+		_ = client.CancelOrders(context.Background(), cancels)
+	})
 
 	// Test empty cancels
 	t.Run("empty_cancels", func(t *testing.T) {
@@ -137,10 +137,10 @@ func TestClientCancelAllOrders(t *testing.T) {
 	assert.NoError(t, err)
 
 	// Test valid cancel all
-    t.Run("valid_cancel_all", func(t *testing.T) {
-        // Network behavior may vary by environment; ensure call does not panic.
-        _ = client.CancelAllOrders(context.Background(), 1)
-    })
+	t.Run("valid_cancel_all", func(t *testing.T) {
+		// Network behavior may vary by environment; ensure call does not panic.
+		_ = client.CancelAllOrders(context.Background(), 1)
+	})
 }
 
 func TestClientLogf(t *testing.T) {

@@ -1,7 +1,9 @@
 package hyperliquid
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"math/big"
@@ -66,25 +68,46 @@ func buildCancelAction(cancels []Cancel) Action {
 
 // GetOpenOrders returns currently resting orders.
 func (c *Client) GetOpenOrders(ctx context.Context) ([]exchange.OrderStatus, error) {
-	if c.address == "" {
+	infoAddr := c.getInfoAddress()
+	if infoAddr == "" {
 		return nil, fmt.Errorf("hyperliquid: client address unavailable")
 	}
-	var resp struct {
-		Status string              `json:"status"`
-		Data   []frontendOpenOrder `json:"data"`
-	}
+
+	// Use json.RawMessage to capture raw response first
+	var raw json.RawMessage
 	if err := c.doInfoRequest(ctx, InfoRequest{
 		Type: "frontendOpenOrders",
-		User: c.address,
-	}, &resp); err != nil {
+		User: infoAddr,
+	}, &raw); err != nil {
 		return nil, err
 	}
-	if strings.ToLower(resp.Status) != "ok" {
-		return nil, fmt.Errorf("hyperliquid: frontendOpenOrders status %q", resp.Status)
+
+	// Try to determine if response is an array or an object
+	var orders []frontendOpenOrder
+	trimmed := bytes.TrimSpace(raw)
+
+	if len(trimmed) > 0 && trimmed[0] == '[' {
+		// Response is a direct array
+		if err := json.Unmarshal(raw, &orders); err != nil {
+			return nil, fmt.Errorf("hyperliquid: decode open orders array: %w", err)
+		}
+	} else {
+		// Response is an object with status and data fields
+		var resp struct {
+			Status string              `json:"status"`
+			Data   []frontendOpenOrder `json:"data"`
+		}
+		if err := json.Unmarshal(raw, &resp); err != nil {
+			return nil, fmt.Errorf("hyperliquid: decode open orders object: %w", err)
+		}
+		if strings.ToLower(resp.Status) != "ok" {
+			return nil, fmt.Errorf("hyperliquid: frontendOpenOrders status %q", resp.Status)
+		}
+		orders = resp.Data
 	}
 
-	results := make([]exchange.OrderStatus, 0, len(resp.Data))
-	for _, raw := range resp.Data {
+	results := make([]exchange.OrderStatus, 0, len(orders))
+	for _, raw := range orders {
 		status := exchange.OrderStatus{
 			Order: exchange.OrderInfo{
 				Coin:      raw.Coin,
