@@ -41,17 +41,25 @@ type TriggerOrderType struct {
 	Tpsl string `json:"tpsl,omitempty"`
 }
 
+// BuilderInfo describes a routing builder and optional fee configuration.
+type BuilderInfo struct {
+	Name   string `json:"name"`
+	FeeBps int    `json:"feeBps"`
+}
+
 // Order describes a normalized order request.
 type Order struct {
-	Asset      int       `json:"asset"`                // Exchange-specific asset index.
-	IsBuy      bool      `json:"isBuy"`                // true for buy, false for sell.
-	LimitPx    string    `json:"limitPx"`              // Limit price as string to avoid precision loss.
-	Sz         string    `json:"sz"`                   // Order size as string to avoid precision loss.
-	ReduceOnly bool      `json:"reduceOnly"`           // Indicates whether the order only reduces position.
-	OrderType  OrderType `json:"orderType"`            // Order execution parameters.
-	Cloid      string    `json:"cloid,omitempty"`      // Optional client order identifier.
-	TriggerPx  string    `json:"triggerPx,omitempty"`  // Optional trigger price for advanced orders.
-	TriggerRel string    `json:"triggerRel,omitempty"` // Optional trigger relation (e.g. "lte").
+	Asset      int          `json:"asset"`                // Exchange-specific asset index.
+	IsBuy      bool         `json:"isBuy"`                // true for buy, false for sell.
+	LimitPx    string       `json:"limitPx"`              // Limit price as string to avoid precision loss.
+	Sz         string       `json:"sz"`                   // Order size as string to avoid precision loss.
+	ReduceOnly bool         `json:"reduceOnly"`           // Indicates whether the order only reduces position.
+	OrderType  OrderType    `json:"orderType"`            // Order execution parameters.
+	Cloid      string       `json:"cloid,omitempty"`      // Optional client order identifier.
+	TriggerPx  string       `json:"triggerPx,omitempty"`  // Optional trigger price for advanced orders.
+	TriggerRel string       `json:"triggerRel,omitempty"` // Optional trigger relation (e.g. "lte").
+	Grouping   string       `json:"grouping,omitempty"`   // Optional grouping identifier for batch actions.
+	Builder    *BuilderInfo `json:"builder,omitempty"`    // Optional builder routing information.
 }
 
 // Position captures live position details.

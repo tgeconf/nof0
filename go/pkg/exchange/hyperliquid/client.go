@@ -263,6 +263,56 @@ func (c *Client) CancelAllOrders(ctx context.Context, asset int) error {
 	return c.CancelOrders(ctx, cancels)
 }
 
+// CancelByCloid cancels a single order identified by client order id.
+func (c *Client) CancelByCloid(ctx context.Context, asset int, cloid string) error {
+	action, err := buildCancelByCloidAction([]CancelByCloid{{Asset: asset, Cloid: cloid}})
+	if err != nil {
+		return err
+	}
+	return c.doExchangeRequest(ctx, action, nil)
+}
+
+// CancelOrdersByCloid cancels multiple orders identified by their client order ids.
+func (c *Client) CancelOrdersByCloid(ctx context.Context, cancels []CancelByCloid) error {
+	if len(cancels) == 0 {
+		return nil
+	}
+	action, err := buildCancelByCloidAction(cancels)
+	if err != nil {
+		return err
+	}
+	return c.doExchangeRequest(ctx, action, nil)
+}
+
+// ModifyOrder updates a single resting order.
+func (c *Client) ModifyOrder(ctx context.Context, req ModifyOrderRequest) (*exchange.OrderResponse, error) {
+	action, err := buildModifyAction(req)
+	if err != nil {
+		return nil, err
+	}
+	var resp exchange.OrderResponse
+	if err := c.doExchangeRequest(ctx, action, &resp); err != nil {
+		return nil, err
+	}
+	return &resp, nil
+}
+
+// ModifyOrders updates multiple resting orders atomically.
+func (c *Client) ModifyOrders(ctx context.Context, requests []ModifyOrderRequest) (*exchange.OrderResponse, error) {
+	if len(requests) == 0 {
+		return nil, fmt.Errorf("hyperliquid: at least one modify request required")
+	}
+	action, err := buildBatchModifyAction(requests)
+	if err != nil {
+		return nil, err
+	}
+	var resp exchange.OrderResponse
+	if err := c.doExchangeRequest(ctx, action, &resp); err != nil {
+		return nil, err
+	}
+	return &resp, nil
+}
+
 // doInfoRequest queries the public info endpoint.
 func (c *Client) doInfoRequest(ctx context.Context, req InfoRequest, result interface{}) error {
 	payload, err := json.Marshal(req)
@@ -347,7 +397,7 @@ func (c *Client) GetVaultDetails(ctx context.Context, vaultAddress string, user 
 }
 
 // doExchangeRequest signs and submits an exchange action.
-func (c *Client) doExchangeRequest(ctx context.Context, action Action, result interface{}) error {
+func (c *Client) doExchangeRequest(ctx context.Context, action interface{}, result interface{}) error {
 	exchangeReq, err := c.signAction(action)
 	if err != nil {
 		return err
@@ -387,7 +437,7 @@ func (c *Client) doExchangeRequest(ctx context.Context, action Action, result in
 }
 
 // signAction builds the EIP-712 payload and signs it.
-func (c *Client) signAction(action Action) (*ExchangeRequest, error) {
+func (c *Client) signAction(action interface{}) (*ExchangeRequest, error) {
 	now := c.clock
 	if now == nil {
 		now = time.Now

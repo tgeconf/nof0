@@ -38,10 +38,41 @@ type frontendOpenOrder struct {
 
 func buildPlaceOrderAction(orders []exchange.Order) (Action, error) {
 	payloads := make([]orderPayload, len(orders))
+	grouping := "na"
+	explicitGrouping := false
+	var builder *builderPayload
 	for i, order := range orders {
 		if err := validateOrder(order); err != nil {
 			return Action{}, fmt.Errorf("order[%d]: %w", i, err)
 		}
+
+		if g := strings.TrimSpace(order.Grouping); g != "" {
+			if !explicitGrouping {
+				grouping = g
+				explicitGrouping = true
+			} else if grouping != g {
+				return Action{}, fmt.Errorf("order[%d]: grouping %q mismatches previous grouping %q", i, g, grouping)
+			}
+		}
+
+		if order.Builder != nil {
+			if strings.TrimSpace(order.Builder.Name) == "" {
+				return Action{}, fmt.Errorf("order[%d]: builder name required when builder is set", i)
+			}
+			if order.Builder.FeeBps < 0 {
+				return Action{}, fmt.Errorf("order[%d]: builder fee must be non-negative", i)
+			}
+			candidate := &builderPayload{
+				Builder: order.Builder.Name,
+				Fee:     order.Builder.FeeBps,
+			}
+			if builder == nil {
+				builder = candidate
+			} else if builder.Builder != candidate.Builder || builder.Fee != candidate.Fee {
+				return Action{}, fmt.Errorf("order[%d]: builder configuration must match previous orders", i)
+			}
+		}
+
 		payload, err := convertOrder(order)
 		if err != nil {
 			return Action{}, fmt.Errorf("order[%d]: %w", i, err)
@@ -50,7 +81,8 @@ func buildPlaceOrderAction(orders []exchange.Order) (Action, error) {
 	}
 	return Action{
 		Type:     ActionTypeOrder,
-		Grouping: "na",
+		Grouping: grouping,
+		Builder:  builder,
 		Orders:   payloads,
 	}, nil
 }
@@ -64,6 +96,30 @@ func buildCancelAction(cancels []Cancel) Action {
 		Type:    ActionTypeCancel,
 		Cancels: payloads,
 	}
+}
+
+func buildCancelByCloidAction(cancels []CancelByCloid) (cancelByCloidAction, error) {
+	if len(cancels) == 0 {
+		return cancelByCloidAction{}, fmt.Errorf("hyperliquid: at least one cancel-by-cloid entry required")
+	}
+	payloads := make([]cancelByCloidPayload, len(cancels))
+	for i, cancel := range cancels {
+		if cancel.Asset < 0 {
+			return cancelByCloidAction{}, fmt.Errorf("hyperliquid: cancel[%d]: asset must be non-negative", i)
+		}
+		cloid := strings.TrimSpace(cancel.Cloid)
+		if cloid == "" {
+			return cancelByCloidAction{}, fmt.Errorf("hyperliquid: cancel[%d]: cloid is required", i)
+		}
+		if len(cloid) > 128 {
+			return cancelByCloidAction{}, fmt.Errorf("hyperliquid: cancel[%d]: cloid exceeds 128 characters", i)
+		}
+		payloads[i] = cancelByCloidPayload{Asset: cancel.Asset, Cloid: cloid}
+	}
+	return cancelByCloidAction{
+		Type:    ActionTypeCancelByCloid,
+		Cancels: payloads,
+	}, nil
 }
 
 // GetOpenOrders returns currently resting orders.

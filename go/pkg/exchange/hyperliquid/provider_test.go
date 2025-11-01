@@ -75,6 +75,26 @@ func (m *MockClient) CancelAllOrders(ctx context.Context, asset int) error {
 	return args.Error(0)
 }
 
+func (m *MockClient) CancelByCloid(ctx context.Context, asset int, cloid string) error {
+	args := m.Called(ctx, asset, cloid)
+	return args.Error(0)
+}
+
+func (m *MockClient) CancelOrdersByCloid(ctx context.Context, cancels []CancelByCloid) error {
+	args := m.Called(ctx, cancels)
+	return args.Error(0)
+}
+
+func (m *MockClient) ModifyOrder(ctx context.Context, req ModifyOrderRequest) (*exchange.OrderResponse, error) {
+	args := m.Called(ctx, req)
+	return args.Get(0).(*exchange.OrderResponse), args.Error(1)
+}
+
+func (m *MockClient) ModifyOrders(ctx context.Context, requests []ModifyOrderRequest) (*exchange.OrderResponse, error) {
+	args := m.Called(ctx, requests)
+	return args.Get(0).(*exchange.OrderResponse), args.Error(1)
+}
+
 func (m *MockClient) FormatSize(ctx context.Context, coin string, qty float64) (string, error) {
 	args := m.Called(ctx, coin, qty)
 	return args.Get(0).(string), args.Error(1)

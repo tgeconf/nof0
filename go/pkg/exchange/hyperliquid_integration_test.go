@@ -4,6 +4,8 @@ package exchange_test
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"net/http"
 	"nof0-api/pkg/exchange"
 	"os"
@@ -136,6 +138,69 @@ func (s *HLIntegrationSuite) Test_OrderLifecycle_Strict() {
 	s.Require().NoError(s.Provider.ClosePosition(ctx, s.Coin), "ClosePosition")
 }
 
+// Modifier and cancel-by-cloid lifecycle using newly added writable helpers.
+func (s *HLIntegrationSuite) Test_OrderLifecycle_ModifyAndCancelByCloid() {
+	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
+	defer cancel()
+
+	// Ensure we have sufficient balance before running the flow.
+	value, err := s.Provider.GetAccountValue(ctx)
+	s.Require().NoError(err, "GetAccountValue")
+	s.Require().True(value > 0, "account must have positive balance for order placement")
+
+	// Prepare a tiny resting limit order far from the market so it stays unfilled.
+	size, err := s.Provider.FormatSize(ctx, s.Coin, 0.0005)
+	s.Require().NoError(err, "FormatSize")
+	priceHigh, err := s.Provider.FormatPrice(ctx, s.Coin, 1_000_000) // very high to avoid immediate fill on sell
+	s.Require().NoError(err, "FormatPrice(high)")
+	priceHigher, err := s.Provider.FormatPrice(ctx, s.Coin, 1_100_000)
+	s.Require().NoError(err, "FormatPrice(higher)")
+
+	cloid := "0x" + randomCloid()
+	order := exchange.Order{
+		Asset:      s.AssetIdx,
+		IsBuy:      false,
+		LimitPx:    priceHigh,
+		Sz:         size,
+		ReduceOnly: false,
+		OrderType: exchange.OrderType{
+			Limit: &exchange.LimitOrderType{TIF: "Gtc"},
+		},
+		Cloid: cloid,
+	}
+
+	resp, err := s.Provider.PlaceOrder(ctx, order)
+	s.Require().NoError(err, "PlaceOrder")
+	s.Require().NotNil(resp)
+	s.Require().Equal("ok", resp.Status, "place order response should be ok")
+	s.Require().NotEmpty(resp.Response.Data.Statuses)
+	resting := resp.Response.Data.Statuses[0].Resting
+	s.Require().NotNil(resting, "expected resting order status")
+	oid := resting.Oid
+
+	// Modify the order in place, bumping the limit price higher so it remains non-executable.
+	modReq := hl.ModifyOrderRequest{
+		Oid: &oid,
+		Order: exchange.Order{
+			Asset:      s.AssetIdx,
+			IsBuy:      order.IsBuy,
+			LimitPx:    priceHigher,
+			Sz:         order.Sz,
+			ReduceOnly: order.ReduceOnly,
+			OrderType:  order.OrderType,
+			Cloid:      order.Cloid,
+			Grouping:   order.Grouping,
+		},
+	}
+	modResp, err := s.Provider.ModifyOrder(ctx, modReq)
+	s.Require().NoError(err, "ModifyOrder")
+	s.Require().NotNil(modResp)
+	s.Require().Equal("ok", modResp.Status)
+
+	// Cancel the order by its client order identifier.
+	s.Require().NoError(s.Provider.CancelByCloid(ctx, s.AssetIdx, cloid), "CancelByCloid")
+}
+
 // Read-only endpoints from the API doc: subAccounts and vaultDetails.
 func (s *HLIntegrationSuite) Test_InfoEndpoints_SubAccounts_Vault() {
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
@@ -164,4 +229,12 @@ func (s *HLIntegrationSuite) Test_InfoEndpoints_SubAccounts_Vault() {
 
 func TestHLIntegrationSuite(t *testing.T) {
 	suite.Run(t, new(HLIntegrationSuite))
+}
+
+func randomCloid() string {
+	buf := make([]byte, 16)
+	if _, err := rand.Read(buf); err != nil {
+		panic(err)
+	}
+	return hex.EncodeToString(buf)
 }

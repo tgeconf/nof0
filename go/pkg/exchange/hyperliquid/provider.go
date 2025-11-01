@@ -27,6 +27,10 @@ type clientAPI interface {
 	CancelAllOrders(ctx context.Context, asset int) error
 	FormatSize(ctx context.Context, coin string, qty float64) (string, error)
 	FormatPrice(ctx context.Context, coin string, price float64) (string, error)
+	CancelByCloid(ctx context.Context, asset int, cloid string) error
+	CancelOrdersByCloid(ctx context.Context, cancels []CancelByCloid) error
+	ModifyOrder(ctx context.Context, req ModifyOrderRequest) (*exchange.OrderResponse, error)
+	ModifyOrders(ctx context.Context, requests []ModifyOrderRequest) (*exchange.OrderResponse, error)
 }
 
 type Provider struct {
@@ -131,6 +135,26 @@ func (p *Provider) CancelAllBySymbol(ctx context.Context, coin string) error {
 		return err
 	}
 	return p.client.CancelAllOrders(ctx, idx)
+}
+
+// CancelByCloid cancels an order using its client order identifier.
+func (p *Provider) CancelByCloid(ctx context.Context, asset int, cloid string) error {
+	return p.client.CancelByCloid(ctx, asset, cloid)
+}
+
+// CancelOrdersByCloid cancels multiple orders identified by their client order identifiers.
+func (p *Provider) CancelOrdersByCloid(ctx context.Context, cancels []CancelByCloid) error {
+	return p.client.CancelOrdersByCloid(ctx, cancels)
+}
+
+// ModifyOrder updates a single resting order.
+func (p *Provider) ModifyOrder(ctx context.Context, req ModifyOrderRequest) (*exchange.OrderResponse, error) {
+	return p.client.ModifyOrder(ctx, req)
+}
+
+// ModifyOrders updates multiple resting orders atomically.
+func (p *Provider) ModifyOrders(ctx context.Context, requests []ModifyOrderRequest) (*exchange.OrderResponse, error) {
+	return p.client.ModifyOrders(ctx, requests)
 }
 
 // FormatSize rounds a float quantity to szDecimals and returns a string.

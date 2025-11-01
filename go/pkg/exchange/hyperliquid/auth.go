@@ -83,7 +83,7 @@ func (s *PrivateKeySigner) GetAddress() string {
 }
 
 // signAction attaches signature metadata to an action.
-func signAction(action Action, signer Signer, nonce int64, mainAddress string, vaultAddress string, isMainnet bool) (*ExchangeRequest, error) {
+func signAction(action interface{}, signer Signer, nonce int64, mainAddress string, vaultAddress string, isMainnet bool) (*ExchangeRequest, error) {
 	if signer == nil {
 		return nil, errors.New("hyperliquid: signer required")
 	}
@@ -108,7 +108,7 @@ func signAction(action Action, signer Signer, nonce int64, mainAddress string, v
 }
 
 // buildEIP712Message constructs the EIP-712 hash for the action.
-func buildEIP712Message(action Action, nonce int64, vaultAddress string, isMainnet bool) ([]byte, error) {
+func buildEIP712Message(action interface{}, nonce int64, vaultAddress string, isMainnet bool) ([]byte, error) {
 	if nonce <= 0 {
 		return nil, fmt.Errorf("hyperliquid: nonce must be positive")
 	}

@@ -59,6 +59,54 @@ func TestBuildPlaceOrderAction(t *testing.T) {
 	require.Equal(t, order.Cloid, payload.Cloid)
 }
 
+func TestBuildPlaceOrderActionWithBuilder(t *testing.T) {
+	order := exchange.Order{
+		Asset:      3,
+		IsBuy:      true,
+		LimitPx:    "123.45",
+		Sz:         "0.25",
+		ReduceOnly: false,
+		OrderType: exchange.OrderType{
+			Limit: &exchange.LimitOrderType{TIF: "Gtc"},
+		},
+		Builder:  &exchange.BuilderInfo{Name: "builder-addr", FeeBps: 25},
+		Grouping: "bundle",
+	}
+	action, err := buildPlaceOrderAction([]exchange.Order{order})
+	require.NoError(t, err)
+	require.Equal(t, "bundle", action.Grouping)
+	require.NotNil(t, action.Builder)
+	require.Equal(t, "builder-addr", action.Builder.Builder)
+	require.Equal(t, 25, action.Builder.Fee)
+}
+
+func TestBuildPlaceOrderActionGroupingMismatch(t *testing.T) {
+	orders := []exchange.Order{
+		{
+			Asset:   1,
+			IsBuy:   true,
+			LimitPx: "1",
+			Sz:      "1",
+			OrderType: exchange.OrderType{
+				Limit: &exchange.LimitOrderType{TIF: "Gtc"},
+			},
+			Grouping: "g1",
+		},
+		{
+			Asset:   1,
+			IsBuy:   false,
+			LimitPx: "2",
+			Sz:      "1",
+			OrderType: exchange.OrderType{
+				Limit: &exchange.LimitOrderType{TIF: "Gtc"},
+			},
+			Grouping: "g2",
+		},
+	}
+	_, err := buildPlaceOrderAction(orders)
+	require.Error(t, err)
+}
+
 func TestBuildEIP712Message(t *testing.T) {
 	order := exchange.Order{
 		Asset:   1,
@@ -302,6 +350,52 @@ func TestBuildCloseOrder(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, ok)
 	require.Equal(t, defaultAggressiveBuyLimit, order.LimitPx)
+}
+
+func TestBuildCancelByCloidAction(t *testing.T) {
+	action, err := buildCancelByCloidAction([]CancelByCloid{{Asset: 5, Cloid: "abc"}})
+	require.NoError(t, err)
+	require.Equal(t, ActionTypeCancelByCloid, action.Type)
+	require.Len(t, action.Cancels, 1)
+	require.Equal(t, 5, action.Cancels[0].Asset)
+	require.Equal(t, "abc", action.Cancels[0].Cloid)
+}
+
+func TestBuildModifyAction(t *testing.T) {
+	oid := int64(42)
+	req := ModifyOrderRequest{
+		Oid: &oid,
+		Order: exchange.Order{
+			Asset:   1,
+			IsBuy:   true,
+			LimitPx: "100",
+			Sz:      "1",
+			OrderType: exchange.OrderType{
+				Limit: &exchange.LimitOrderType{TIF: "Gtc"},
+			},
+		},
+	}
+	action, err := buildModifyAction(req)
+	require.NoError(t, err)
+	require.Equal(t, ActionTypeModify, action.Type)
+	require.Equal(t, oid, action.Oid)
+	require.Equal(t, "100", action.Order.LimitPx)
+
+	req = ModifyOrderRequest{
+		Cloid: "cl-123",
+		Order: exchange.Order{
+			Asset:   1,
+			IsBuy:   false,
+			LimitPx: "90",
+			Sz:      "1",
+			OrderType: exchange.OrderType{
+				Limit: &exchange.LimitOrderType{TIF: "Gtc"},
+			},
+		},
+	}
+	action, err = buildModifyAction(req)
+	require.NoError(t, err)
+	require.Equal(t, "cl-123", action.Oid)
 }
 
 func TestFormatSizeAndIOCMarket(t *testing.T) {

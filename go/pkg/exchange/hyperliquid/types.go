@@ -15,10 +15,16 @@ const (
 	ActionTypeOrder ActionType = "order"
 	// ActionTypeCancel cancels specific orders by oid.
 	ActionTypeCancel ActionType = "cancel"
+	// ActionTypeCancelByCloid cancels orders identified by client order id.
+	ActionTypeCancelByCloid ActionType = "cancelByCloid"
 	// ActionTypeCancelAll cancels all resting orders for an asset.
 	ActionTypeCancelAll ActionType = "cancelAll"
 	// ActionTypeUpdateLeverage adjusts leverage settings.
 	ActionTypeUpdateLeverage ActionType = "updateLeverage"
+	// ActionTypeModify updates a single resting order.
+	ActionTypeModify ActionType = "modify"
+	// ActionTypeBatchModify updates multiple resting orders.
+	ActionTypeBatchModify ActionType = "batchModify"
 )
 
 // Action encodes the payload sent to the Hyperliquid exchange endpoint.
@@ -28,6 +34,7 @@ type Action struct {
 	Cancels   []cancelPayload   `json:"cancels,omitempty" msgpack:"cancels,omitempty"`
 	CancelAll *CancelAllPayload `json:"cancelAll,omitempty" msgpack:"cancelAll,omitempty"`
 	Grouping  string            `json:"grouping,omitempty" msgpack:"grouping,omitempty"`
+	Builder   *builderPayload   `json:"builder,omitempty" msgpack:"builder,omitempty"`
 	Asset     *int              `json:"asset,omitempty" msgpack:"asset,omitempty"`
 	IsCross   *bool             `json:"isCross,omitempty" msgpack:"isCross,omitempty"`
 	Leverage  int               `json:"leverage,omitempty" msgpack:"leverage,omitempty"`
@@ -61,6 +68,11 @@ type triggerOrderPayload struct {
 	TriggerRel string `json:"triggerRel,omitempty" msgpack:"triggerRel,omitempty"`
 }
 
+type builderPayload struct {
+	Builder string `json:"b" msgpack:"b"`
+	Fee     int    `json:"f" msgpack:"f"`
+}
+
 // Cancel identifies an order to cancel (public API input).
 type Cancel struct {
 	Asset int
@@ -73,18 +85,51 @@ type cancelPayload struct {
 	Oid   int64 `json:"o" msgpack:"o"`
 }
 
+// CancelByCloid identifies an order to cancel by client order id.
+type CancelByCloid struct {
+	Asset int
+	Cloid string
+}
+
+type cancelByCloidPayload struct {
+	Asset int    `json:"asset" msgpack:"asset"`
+	Cloid string `json:"cloid" msgpack:"cloid"`
+}
+
+type cancelByCloidAction struct {
+	Type    ActionType             `json:"type" msgpack:"type"`
+	Cancels []cancelByCloidPayload `json:"cancels" msgpack:"cancels"`
+}
+
 // CancelAllPayload captures cancel-all arguments.
 type CancelAllPayload struct {
 	Asset int `json:"asset" msgpack:"asset"`
 }
 
+type modifyPayload struct {
+	Type  string       `json:"type,omitempty" msgpack:"type,omitempty"`
+	Oid   interface{}  `json:"oid" msgpack:"oid"`
+	Order orderPayload `json:"order" msgpack:"order"`
+}
+
+type modifyAction struct {
+	Type  ActionType   `json:"type" msgpack:"type"`
+	Oid   interface{}  `json:"oid" msgpack:"oid"`
+	Order orderPayload `json:"order" msgpack:"order"`
+}
+
+type batchModifyAction struct {
+	Type     ActionType      `json:"type" msgpack:"type"`
+	Modifies []modifyPayload `json:"modifies" msgpack:"modifies"`
+}
+
 // ExchangeRequest is the signed request envelope for exchange actions.
 type ExchangeRequest struct {
-	Action       Action    `json:"action"`
-	Nonce        int64     `json:"nonce"`
-	Signature    Signature `json:"signature"`
-	VaultAddress string    `json:"vaultAddress,omitempty"`
-	ExpiresAfter *int64    `json:"expiresAfter,omitempty"`
+	Action       interface{} `json:"action"`
+	Nonce        int64       `json:"nonce"`
+	Signature    Signature   `json:"signature"`
+	VaultAddress string      `json:"vaultAddress,omitempty"`
+	ExpiresAfter *int64      `json:"expiresAfter,omitempty"`
 }
 
 // Signature represents an ECDSA signature.
