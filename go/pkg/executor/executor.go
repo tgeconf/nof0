@@ -58,17 +58,17 @@ func (e *BasicExecutor) GetFullDecision(input *Context) (*FullDecision, error) {
 
 	// Render prompt from template with dynamic sections.
 	inputs := buildPromptInputs(e.cfg, &Context{
-		CurrentTime:     input.CurrentTime,
-		RuntimeMinutes:  input.RuntimeMinutes,
-		CallCount:       input.CallCount,
-		Account:         input.Account,
-		Positions:       input.Positions,
-		CandidateCoins:  input.CandidateCoins,
-		MarketDataMap:   input.MarketDataMap,
-		OpenInterestMap: input.OpenInterestMap,
-		Performance:     e.performance,
-		BTCETHLeverage:  e.cfg.BTCETHLeverage,
-		AltcoinLeverage: e.cfg.AltcoinLeverage,
+		CurrentTime:       input.CurrentTime,
+		RuntimeMinutes:    input.RuntimeMinutes,
+		CallCount:         input.CallCount,
+		Account:           input.Account,
+		Positions:         input.Positions,
+		CandidateCoins:    input.CandidateCoins,
+		MarketDataMap:     input.MarketDataMap,
+		OpenInterestMap:   input.OpenInterestMap,
+		Performance:       e.performance,
+		MajorCoinLeverage: e.cfg.MajorCoinLeverage,
+		AltcoinLeverage:   e.cfg.AltcoinLeverage,
 	})
 
 	promptStr, err := e.renderer.Render(inputs)

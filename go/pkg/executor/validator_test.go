@@ -10,7 +10,7 @@ import (
 
 func baseCfg() *Config {
 	return &Config{
-		BTCETHLeverage:         20,
+		MajorCoinLeverage:      20,
 		AltcoinLeverage:        10,
 		MinConfidence:          75,
 		MinRiskReward:          3.0,

@@ -36,7 +36,7 @@ You must pick exactly one of these signals each cycle:
 No pyramiding, no hedging the same asset, no partial exits. Act on market orders.
 
 ## Position Sizing & Risk
-- Use leverage judiciously: BTC/ETH default {{ .Config.BTCETHLeverage }}x, alts default {{ .Config.AltcoinLeverage }}x.
+- Use leverage judiciously: BTC/ETH default {{ .Config.MajorCoinLeverage }}x, alts default {{ .Config.AltcoinLeverage }}x.
 - Minimum reward-to-risk ratio: {{ printf "%.2f" .Config.MinRiskReward }}.
 - Respect per-trader limits defined by Manager (see risk budget section).
 - Every actionable trade must include stop loss, profit target, invalidation condition, confidence, and risk in USD.

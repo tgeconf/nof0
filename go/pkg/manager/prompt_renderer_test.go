@@ -27,7 +27,7 @@ func TestManagerPromptRenderer(t *testing.T) {
 			MaxPositions:       3,
 			MaxPositionSizeUSD: 500,
 			MaxMarginUsagePct:  60,
-			BTCETHLeverage:     20,
+			MajorCoinLeverage:  20,
 			AltcoinLeverage:    10,
 			MinRiskRewardRatio: 3.0,
 			MinConfidence:      75,

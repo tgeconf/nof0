@@ -82,7 +82,7 @@ type RiskParameters struct {
 	MaxPositions       int     `yaml:"max_positions"`
 	MaxPositionSizeUSD float64 `yaml:"max_position_size_usd"`
 	MaxMarginUsagePct  float64 `yaml:"max_margin_usage_pct"`
-	BTCETHLeverage     int     `yaml:"btc_eth_leverage"`
+	MajorCoinLeverage  int     `yaml:"major_coin_leverage"`
 	AltcoinLeverage    int     `yaml:"altcoin_leverage"`
 	MinRiskRewardRatio float64 `yaml:"min_risk_reward_ratio"`
 	MinConfidence      int     `yaml:"min_confidence"`
@@ -293,8 +293,8 @@ func (r RiskParameters) Validate(index int) error {
 	if r.MaxMarginUsagePct < 0 || r.MaxMarginUsagePct > 100 {
 		return fmt.Errorf("manager config: traders[%d].risk_params.max_margin_usage_pct must be between 0 and 100", index)
 	}
-	if r.BTCETHLeverage <= 0 {
-		return fmt.Errorf("manager config: traders[%d].risk_params.btc_eth_leverage must be positive", index)
+	if r.MajorCoinLeverage <= 0 {
+		return fmt.Errorf("manager config: traders[%d].risk_params.major_coin_leverage must be positive", index)
 	}
 	if r.AltcoinLeverage <= 0 {
 		return fmt.Errorf("manager config: traders[%d].risk_params.altcoin_leverage must be positive", index)

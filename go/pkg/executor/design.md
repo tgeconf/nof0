@@ -100,7 +100,7 @@ executor/
     MarketDataMap    map[string]*market.Snapshot // 市场快照映射（复用 market.Provider）
     OpenInterestMap  map[string]*OpenInterest    // OI 扩展数据（可选）
     Performance      *PerformanceView            // 历史表现概览（Manager 提供只读视图）
-    BTCETHLeverage   int                        // BTC/ETH 杠杆倍数（来自配置）
+    MajorCoinLeverage   int                        // BTC/ETH 杠杆倍数（来自配置）
     AltcoinLeverage  int                        // 山寨币杠杆倍数（来自配置）
   }
   ```
@@ -692,7 +692,7 @@ executor/
 
   ```go
   type ExecutorConfig struct {
-    BTCETHLeverage  int     // BTC/ETH 杠杆倍数
+    MajorCoinLeverage  int     // BTC/ETH 杠杆倍数
     AltcoinLeverage int     // 山寨币杠杆倍数
     MinConfidence   int     // 最低信心度
     MinRiskReward   float64 // 最低风险回报比

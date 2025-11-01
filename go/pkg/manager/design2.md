@@ -55,7 +55,7 @@ traders:
     market_provider: hyperliquid
     allocation_pct: 100
     risk_params:
-      btc_eth_leverage: 20
+      major_coin_leverage: 20
       altcoin_leverage: 10
       min_confidence: 70
       min_risk_reward_ratio: 3.0

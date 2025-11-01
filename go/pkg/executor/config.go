@@ -13,7 +13,7 @@ import (
 
 // Config controls runtime behaviour for the executor module.
 type Config struct {
-	BTCETHLeverage         int                 `yaml:"btc_eth_leverage"`
+	MajorCoinLeverage      int                 `yaml:"major_coin_leverage"`
 	AltcoinLeverage        int                 `yaml:"altcoin_leverage"`
 	MinConfidence          int                 `yaml:"min_confidence"`
 	MinRiskReward          float64             `yaml:"min_risk_reward"`
@@ -32,11 +32,11 @@ type Config struct {
 
 // Override allows per-trader or per-symbol overrides of core thresholds.
 type Override struct {
-	BTCETHLeverage  *int     `yaml:"btc_eth_leverage,omitempty"`
-	AltcoinLeverage *int     `yaml:"altcoin_leverage,omitempty"`
-	MinConfidence   *int     `yaml:"min_confidence,omitempty"`
-	MinRiskReward   *float64 `yaml:"min_risk_reward,omitempty"`
-	MaxPositions    *int     `yaml:"max_positions,omitempty"`
+	MajorCoinLeverage *int     `yaml:"major_coin_leverage,omitempty"`
+	AltcoinLeverage   *int     `yaml:"altcoin_leverage,omitempty"`
+	MinConfidence     *int     `yaml:"min_confidence,omitempty"`
+	MinRiskReward     *float64 `yaml:"min_risk_reward,omitempty"`
+	MaxPositions      *int     `yaml:"max_positions,omitempty"`
 }
 
 // LoadConfig reads configuration from disk.
@@ -121,8 +121,8 @@ func (c *Config) expandFields() {
 
 // Validate ensures configuration sanity.
 func (c *Config) Validate() error {
-	if c.BTCETHLeverage <= 0 {
-		return errors.New("executor config: btc_eth_leverage must be positive")
+	if c.MajorCoinLeverage <= 0 {
+		return errors.New("executor config: major_coin_leverage must be positive")
 	}
 	if c.AltcoinLeverage <= 0 {
 		return errors.New("executor config: altcoin_leverage must be positive")
@@ -152,8 +152,8 @@ func (c *Config) Validate() error {
 		if strings.TrimSpace(key) == "" {
 			return errors.New("executor config: overrides cannot contain empty keys")
 		}
-		if override.BTCETHLeverage != nil && *override.BTCETHLeverage <= 0 {
-			return fmt.Errorf("executor config: override %s btc_eth_leverage must be positive", key)
+		if override.MajorCoinLeverage != nil && *override.MajorCoinLeverage <= 0 {
+			return fmt.Errorf("executor config: override %s major_coin_leverage must be positive", key)
 		}
 		if override.AltcoinLeverage != nil && *override.AltcoinLeverage <= 0 {
 			return fmt.Errorf("executor config: override %s altcoin_leverage must be positive", key)

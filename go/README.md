@@ -119,7 +119,7 @@ traders:
       max_positions: 3
       max_position_size_usd: 500
       max_margin_usage_pct: 60
-      btc_eth_leverage: 20
+      major_coin_leverage: 20
       altcoin_leverage: 10
       min_risk_reward_ratio: 3.0
       min_confidence: 75
@@ -130,7 +130,7 @@ traders:
 - `etc/executor.yaml`（节选：仅执行参数，无模型/Prompt）
 
 ```yaml
-btc_eth_leverage: 20
+major_coin_leverage: 20
 altcoin_leverage: 10
 min_confidence: 75
 min_risk_reward: 3.0

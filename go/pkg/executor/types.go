@@ -62,18 +62,18 @@ type AssetMeta struct {
 
 // Context aggregates all inputs required to form a decision.
 type Context struct {
-	CurrentTime     string
-	RuntimeMinutes  int
-	CallCount       int
-	Account         AccountInfo
-	Positions       []PositionInfo
-	CandidateCoins  []CandidateCoin
-	MarketDataMap   map[string]*market.Snapshot
-	OpenInterestMap map[string]*OpenInterest
-	Performance     *PerformanceView
-	BTCETHLeverage  int
-	AltcoinLeverage int
-	AssetMeta       map[string]AssetMeta
+	CurrentTime       string
+	RuntimeMinutes    int
+	CallCount         int
+	Account           AccountInfo
+	Positions         []PositionInfo
+	CandidateCoins    []CandidateCoin
+	MarketDataMap     map[string]*market.Snapshot
+	OpenInterestMap   map[string]*OpenInterest
+	Performance       *PerformanceView
+	MajorCoinLeverage int
+	AltcoinLeverage   int
+	AssetMeta         map[string]AssetMeta
 	// Optional per-trader risk guards injected by Manager.
 	MaxRiskPct         float64 // e.g., 3 means 3% of equity per trade
 	MaxPositionSizeUSD float64 // hard cap per trade

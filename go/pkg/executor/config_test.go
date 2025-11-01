@@ -11,7 +11,7 @@ import (
 func TestLoadConfig(t *testing.T) {
 	dir := t.TempDir()
 	configYAML := `
-btc_eth_leverage: 20
+major_coin_leverage: 20
 altcoin_leverage: 10
 min_confidence: 75
 min_risk_reward: 3.5
@@ -51,7 +51,7 @@ overrides:
 func TestLoadConfigInvalidMinRiskReward(t *testing.T) {
 	dir := t.TempDir()
 	configYAML := `
-btc_eth_leverage: 20
+major_coin_leverage: 20
 altcoin_leverage: 10
 min_confidence: 75
 min_risk_reward: -1
@@ -69,7 +69,7 @@ max_positions: 4
 func TestLoadConfigDuplicateTraderIDs(t *testing.T) {
 	dir := t.TempDir()
 	configYAML := `
-btc_eth_leverage: 20
+major_coin_leverage: 20
 altcoin_leverage: 10
 min_confidence: 75
 min_risk_reward: 3.5
@@ -90,7 +90,7 @@ allowed_trader_ids:
 func TestValidateFails(t *testing.T) {
 	dir := t.TempDir()
 	configYAML := `
-btc_eth_leverage: 0
+major_coin_leverage: 0
 altcoin_leverage: -1
 min_confidence: 150
 min_risk_reward: -2
@@ -104,5 +104,5 @@ decision_timeout: 1s
 
 	_, err = LoadConfig(path)
 	assert.Error(t, err, "LoadConfig should error for invalid config")
-	assert.Contains(t, err.Error(), "btc_eth_leverage", "error should mention btc_eth_leverage")
+	assert.Contains(t, err.Error(), "major_coin_leverage", "error should mention major_coin_leverage")
 }

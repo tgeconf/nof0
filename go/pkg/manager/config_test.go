@@ -43,7 +43,7 @@ traders:
       max_positions: 3
       max_position_size_usd: 500
       max_margin_usage_pct: 60
-      btc_eth_leverage: 20
+      major_coin_leverage: 20
       altcoin_leverage: 10
       min_risk_reward_ratio: 3.0
       min_confidence: 75
@@ -62,7 +62,7 @@ traders:
       max_positions: 2
       max_position_size_usd: 300
       max_margin_usage_pct: 50
-      btc_eth_leverage: 10
+      major_coin_leverage: 10
       altcoin_leverage: 5
       min_risk_reward_ratio: 2.5
       min_confidence: 80
@@ -118,7 +118,7 @@ traders:
       max_positions: 1
       max_position_size_usd: 100
       max_margin_usage_pct: 50
-      btc_eth_leverage: 10
+      major_coin_leverage: 10
       altcoin_leverage: 5
       min_risk_reward_ratio: 2
       min_confidence: 70
@@ -137,7 +137,7 @@ traders:
       max_positions: 1
       max_position_size_usd: 100
       max_margin_usage_pct: 50
-      btc_eth_leverage: 10
+      major_coin_leverage: 10
       altcoin_leverage: 5
       min_risk_reward_ratio: 2
       min_confidence: 70
@@ -181,7 +181,7 @@ traders:
       max_positions: 1
       max_position_size_usd: 100
       max_margin_usage_pct: 50
-      btc_eth_leverage: 10
+      major_coin_leverage: 10
       altcoin_leverage: 5
       min_risk_reward_ratio: 2
       min_confidence: 70
@@ -228,7 +228,7 @@ traders:
       max_positions: 1
       max_position_size_usd: 100
       max_margin_usage_pct: 50
-      btc_eth_leverage: 10
+      major_coin_leverage: 10
       altcoin_leverage: 5
       min_risk_reward_ratio: 2
       min_confidence: 70

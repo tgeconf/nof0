@@ -10,7 +10,7 @@ import (
 func TestPromptRenderer(t *testing.T) {
 	templatePath := filepath.Join("..", "..", "etc", "prompts", "executor", "default_prompt.tmpl")
 	cfg := &Config{
-		BTCETHLeverage:         20,
+		MajorCoinLeverage:      20,
 		AltcoinLeverage:        8,
 		MinConfidence:          75,
 		MinRiskReward:          3.2,
@@ -61,7 +61,7 @@ func TestPromptRendererNilConfig(t *testing.T) {
 
 func TestPromptRendererEmptyPath(t *testing.T) {
 	cfg := &Config{
-		BTCETHLeverage:         20,
+		MajorCoinLeverage:      20,
 		AltcoinLeverage:        8,
 		MinConfidence:          75,
 		MinRiskReward:          3.2,

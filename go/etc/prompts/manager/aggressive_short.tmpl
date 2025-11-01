@@ -11,7 +11,7 @@ TRADER CONFIG SUMMARY
 - Decision Interval: {{ .Trader.DecisionInterval }}
 - Allocation %: {{ printf "%.2f" .Trader.AllocationPct }} (respect residual reserve)
 - Risk Caps: max_positions={{ .Trader.RiskParams.MaxPositions }}, max_position_size_usd={{ .Trader.RiskParams.MaxPositionSizeUSD }}, max_margin_usage_pct={{ .Trader.RiskParams.MaxMarginUsagePct }}
-- Leverage Defaults: BTC/ETH={{ .Trader.RiskParams.BTCETHLeverage }}x, Alts={{ .Trader.RiskParams.AltcoinLeverage }}x
+- Leverage Defaults: BTC/ETH={{ .Trader.RiskParams.MajorCoinLeverage }}x, Alts={{ .Trader.RiskParams.AltcoinLeverage }}x
 - Min Confidence: {{ .Trader.RiskParams.MinConfidence }}, Min RR: {{ printf "%.2f" .Trader.RiskParams.MinRiskRewardRatio }}
 
 EXECUTION PLAYBOOK

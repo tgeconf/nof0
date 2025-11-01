@@ -53,7 +53,7 @@ func ValidateDecisions(cfg *Config, ctx *Context, decisions []Decision) error {
 			// Leverage caps (config) and asset-level cap if available; take the minimum
 			capLev := cfg.AltcoinLeverage
 			if isBTCETH(d.Symbol) {
-				capLev = cfg.BTCETHLeverage
+				capLev = cfg.MajorCoinLeverage
 			}
 			if ctx != nil && ctx.AssetMeta != nil {
 				if meta, ok := ctx.AssetMeta[d.Symbol]; ok && meta.MaxLeverage > 0 {

@@ -98,7 +98,7 @@ type RiskParameters struct {
     MaxPositions        int     // 最大持仓数量
     MaxPositionSizeUSD  float64 // 单币种最大仓位（USD）
     MaxMarginUsagePct   float64 // 最大保证金使用率（%）
-    BTCETHLeverage      int     // BTC/ETH 杠杆倍数
+    MajorCoinLeverage      int     // BTC/ETH 杠杆倍数
     AltcoinLeverage     int     // 山寨币杠杆倍数
     MinRiskRewardRatio  float64 // 最小风险回报比（默认 3.0）
     MinConfidence       int     // 最小信心度（默认 75）

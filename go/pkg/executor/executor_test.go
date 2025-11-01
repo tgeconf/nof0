@@ -43,7 +43,7 @@ func (f *fakeLLM) Close() error           { return nil }
 
 func TestExecutor_GetFullDecision(t *testing.T) {
 	cfg := &Config{
-		BTCETHLeverage:         20,
+		MajorCoinLeverage:      20,
 		AltcoinLeverage:        10,
 		MinConfidence:          75,
 		MinRiskReward:          3.0,

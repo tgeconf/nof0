@@ -60,7 +60,7 @@ func (f *BasicExecutorFactory) NewExecutor(traderCfg TraderConfig) (executorpkg.
 		intervalRaw = "3m"
 	}
 	ec := &executorpkg.Config{
-		BTCETHLeverage:         traderCfg.RiskParams.BTCETHLeverage,
+		MajorCoinLeverage:      traderCfg.RiskParams.MajorCoinLeverage,
 		AltcoinLeverage:        traderCfg.RiskParams.AltcoinLeverage,
 		MinConfidence:          traderCfg.RiskParams.MinConfidence,
 		MinRiskReward:          traderCfg.RiskParams.MinRiskRewardRatio,
@@ -397,7 +397,7 @@ func (m *Manager) ExecuteDecision(trader *VirtualTrader, decision *executorpkg.D
 	lev := decision.Leverage
 	if lev <= 0 {
 		if isBTCorETH(decision.Symbol) {
-			lev = trader.RiskParams.BTCETHLeverage
+			lev = trader.RiskParams.MajorCoinLeverage
 		} else {
 			lev = trader.RiskParams.AltcoinLeverage
 		}
@@ -741,18 +741,18 @@ func (m *Manager) buildExecutorContext(t *VirtualTrader) executorpkg.Context {
 
 	// 4) Compose executor context
 	return executorpkg.Context{
-		CurrentTime:     time.Now().UTC().Format(time.RFC3339),
-		RuntimeMinutes:  0,
-		CallCount:       0,
-		Account:         account,
-		Positions:       positions,
-		CandidateCoins:  candidates,
-		MarketDataMap:   snaps,
-		OpenInterestMap: nil,
-		Performance:     t.Performance.ToExecutorView(),
-		BTCETHLeverage:  t.RiskParams.BTCETHLeverage,
-		AltcoinLeverage: t.RiskParams.AltcoinLeverage,
-		AssetMeta:       assetMeta,
+		CurrentTime:       time.Now().UTC().Format(time.RFC3339),
+		RuntimeMinutes:    0,
+		CallCount:         0,
+		Account:           account,
+		Positions:         positions,
+		CandidateCoins:    candidates,
+		MarketDataMap:     snaps,
+		OpenInterestMap:   nil,
+		Performance:       t.Performance.ToExecutorView(),
+		MajorCoinLeverage: t.RiskParams.MajorCoinLeverage,
+		AltcoinLeverage:   t.RiskParams.AltcoinLeverage,
+		AssetMeta:         assetMeta,
 		// Optional guards sourced from trader risk params when enabled
 		MaxMarginUsagePct: func() float64 {
 			if t.ExecGuards.EnableMarginUsageGuard == nil || *t.ExecGuards.EnableMarginUsageGuard {
