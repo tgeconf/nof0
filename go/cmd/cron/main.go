@@ -9,8 +9,6 @@ import (
 	"syscall"
 	"time"
 
-	// Import for side-effects: loads .env file
-	_ "nof0-api/internal/bootstrap/dotenv"
 	"nof0-api/internal/config"
 	"nof0-api/pkg/exchange"
 	"nof0-api/pkg/market"
@@ -28,11 +26,7 @@ const (
 	shutdownTimeout  = 10 * time.Second // Grace period for shutdown
 )
 
-var (
-	marketConfigPath   = "etc/market.yaml"
-	exchangeConfigPath = "etc/exchange.yaml"
-	monitoredSymbols   = []string{"BTC", "ETH", "SOL"}
-)
+var monitoredSymbols = []string{"BTC", "ETH", "SOL"}
 
 func main() {
 	log.SetFlags(log.Ldate | log.Ltime | log.Lmicroseconds)
@@ -64,16 +58,29 @@ func main() {
 		log.Printf("  - Redis: Not configured")
 	}
 	log.Printf("  - TTL Settings: short=%ds, medium=%ds, long=%ds", appCfg.TTL.Short, appCfg.TTL.Medium, appCfg.TTL.Long)
-	log.Printf("  - Market Config Path: %s", marketConfigPath)
-	log.Printf("  - Exchange Config Path: %s", exchangeConfigPath)
+
+	marketCfg := appCfg.Market.Value
+	marketPath := appCfg.Market.File
+	if marketCfg == nil {
+		marketCfg = config.MustLoadMarket()
+		if marketPath == "" {
+			marketPath = "etc/market.yaml (default)"
+		}
+	}
+
+	exchangeCfg := appCfg.Exchange.Value
+	exchangePath := appCfg.Exchange.File
+	if exchangeCfg == nil {
+		exchangeCfg = config.MustLoadExchange()
+		if exchangePath == "" {
+			exchangePath = "etc/exchange.yaml (default)"
+		}
+	}
+
+	log.Printf("  - Market Config Path: %s", marketPath)
+	log.Printf("  - Exchange Config Path: %s", exchangePath)
 	log.Printf("  - Monitored Symbols: %v", monitoredSymbols)
 	log.Printf("  - Monitoring Intervals: market=%s, exchange=%s", marketInterval, exchangeInterval)
-
-	// Load market configuration
-	marketCfg, err := market.LoadConfig(marketConfigPath)
-	if err != nil {
-		log.Fatalf("[main] Failed to load market config: %v", err)
-	}
 
 	// Build market providers
 	marketProviders, err := marketCfg.BuildProviders()
@@ -85,12 +92,6 @@ func main() {
 	marketProvider, ok := marketProviders[marketCfg.Default]
 	if !ok {
 		log.Fatalf("[main] Default market provider %q not found", marketCfg.Default)
-	}
-
-	// Load exchange configuration
-	exchangeCfg, err := exchange.LoadConfig(exchangeConfigPath)
-	if err != nil {
-		log.Fatalf("[main] Failed to load exchange config: %v", err)
 	}
 
 	// Apply test environment defaults: use testnet endpoints for all providers

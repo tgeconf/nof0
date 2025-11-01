@@ -11,6 +11,8 @@ import (
 	"time"
 
 	"gopkg.in/yaml.v3"
+
+	"nof0-api/pkg/confkit"
 )
 
 // Config defines the overall manager configuration schema.
@@ -100,6 +102,7 @@ type MonitoringConfig struct {
 
 // LoadConfig reads configuration from disk.
 func LoadConfig(path string) (*Config, error) {
+	confkit.LoadDotenvOnce()
 	file, err := os.Open(path)
 	if err != nil {
 		return nil, fmt.Errorf("open manager config: %w", err)
@@ -108,8 +111,19 @@ func LoadConfig(path string) (*Config, error) {
 	return LoadConfigFromReader(file, filepath.Dir(path))
 }
 
+// MustLoad reads manager configuration from the default project location and panics on error.
+func MustLoad() *Config {
+	path := confkit.MustProjectPath("etc/manager.yaml")
+	cfg, err := LoadConfig(path)
+	if err != nil {
+		panic(err)
+	}
+	return cfg
+}
+
 // LoadConfigFromReader constructs a Config from a reader with the provided base directory.
 func LoadConfigFromReader(r io.Reader, baseDir string) (*Config, error) {
+	confkit.LoadDotenvOnce()
 	data, err := io.ReadAll(r)
 	if err != nil {
 		return nil, fmt.Errorf("read manager config: %w", err)

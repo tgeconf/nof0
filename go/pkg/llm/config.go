@@ -10,6 +10,8 @@ import (
 	"time"
 
 	"gopkg.in/yaml.v3"
+
+	"nof0-api/pkg/confkit"
 )
 
 const (
@@ -51,6 +53,7 @@ type ModelConfig struct {
 
 // LoadConfig reads configuration from disk.
 func LoadConfig(path string) (*Config, error) {
+	confkit.LoadDotenvOnce()
 	file, err := os.Open(path)
 	if err != nil {
 		return nil, fmt.Errorf("open llm config: %w", err)
@@ -59,8 +62,19 @@ func LoadConfig(path string) (*Config, error) {
 	return LoadConfigFromReader(file)
 }
 
+// MustLoad reads LLM configuration from the default project location and panics on failure.
+func MustLoad() *Config {
+	path := confkit.MustProjectPath("etc/llm.yaml")
+	cfg, err := LoadConfig(path)
+	if err != nil {
+		panic(err)
+	}
+	return cfg
+}
+
 // LoadConfigFromReader constructs a Config from a reader.
 func LoadConfigFromReader(r io.Reader) (*Config, error) {
+	confkit.LoadDotenvOnce()
 	var raw struct {
 		BaseURL         string                 `yaml:"base_url"`
 		APIKey          string                 `yaml:"api_key"`

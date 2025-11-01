@@ -8,6 +8,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -90,7 +91,8 @@ func WithVaultAddress(addr string) ClientOption {
 func WithMainAddress(addr string) ClientOption {
 	return func(c *Client) {
 		if common.IsHexAddress(addr) {
-			c.mainAddress = common.HexToAddress(addr).Hex()
+			// Hyperliquid expects lowercase addresses
+			c.mainAddress = strings.ToLower(common.HexToAddress(addr).Hex())
 		}
 	}
 }
@@ -155,6 +157,7 @@ func NewClient(privateKeyHex string, isTestnet bool, opts ...ClientOption) (*Cli
 		return nil, fmt.Errorf("hyperliquid: create signer: %w", err)
 	}
 
+	address := signer.GetAddress()
 	client := &Client{
 		infoURL:     mainnetInfoURL,
 		exchangeURL: mainnetExchangeURL,
@@ -162,7 +165,7 @@ func NewClient(privateKeyHex string, isTestnet bool, opts ...ClientOption) (*Cli
 			Timeout: defaultHTTPTimeout,
 		},
 		signer:       signer,
-		address:      signer.GetAddress(),
+		address:      address,
 		isTestnet:    isTestnet,
 		logger:       log.Default(),
 		clock:        time.Now,
@@ -390,7 +393,7 @@ func (c *Client) signAction(action Action) (*ExchangeRequest, error) {
 		now = time.Now
 	}
 	nonce := now().UnixMilli()
-	exchangeReq, err := signAction(action, c.signer, nonce, c.vault, !c.isTestnet)
+	exchangeReq, err := signAction(action, c.signer, nonce, c.mainAddress, c.vault, !c.isTestnet)
 	if err != nil {
 		return nil, err
 	}

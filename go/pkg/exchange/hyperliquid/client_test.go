@@ -99,7 +99,7 @@ func TestSignActionDeterministic(t *testing.T) {
 	require.NoError(t, err)
 
 	nonce := int64(1700000005000)
-	req, err := signAction(action, signer, nonce, "", true)
+	req, err := signAction(action, signer, nonce, "", "", true)
 	require.NoError(t, err)
 	require.Equal(t, nonce, req.Nonce)
 	require.Equal(t, action, req.Action)

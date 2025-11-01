@@ -7,7 +7,6 @@ import (
 	"flag"
 	"fmt"
 
-	_ "nof0-api/internal/bootstrap/dotenv"
 	"nof0-api/internal/config"
 	"nof0-api/internal/handler"
 	"nof0-api/internal/svc"

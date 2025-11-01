@@ -9,6 +9,8 @@ import (
 	"time"
 
 	"gopkg.in/yaml.v3"
+
+	"nof0-api/pkg/confkit"
 )
 
 // Config describes the set of market data providers available to the application.
@@ -55,6 +57,7 @@ func lookupProviderBuilder(typeName string) (ProviderBuilder, bool) {
 
 // LoadConfig reads configuration from disk.
 func LoadConfig(path string) (*Config, error) {
+	confkit.LoadDotenvOnce()
 	file, err := os.Open(path)
 	if err != nil {
 		return nil, fmt.Errorf("open market config: %w", err)
@@ -63,8 +66,19 @@ func LoadConfig(path string) (*Config, error) {
 	return LoadConfigFromReader(file)
 }
 
+// MustLoad reads market configuration from the default project location and panics on error.
+func MustLoad() *Config {
+	path := confkit.MustProjectPath("etc/market.yaml")
+	cfg, err := LoadConfig(path)
+	if err != nil {
+		panic(err)
+	}
+	return cfg
+}
+
 // LoadConfigFromReader constructs a Config from an io.Reader.
 func LoadConfigFromReader(r io.Reader) (*Config, error) {
+	confkit.LoadDotenvOnce()
 	data, err := io.ReadAll(r)
 	if err != nil {
 		return nil, fmt.Errorf("read market config: %w", err)

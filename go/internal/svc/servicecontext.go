@@ -59,47 +59,70 @@ func NewServiceContext(c config.Config, mainConfigPath string) *ServiceContext {
 		DataLoader: data.NewDataLoader(c.DataPath),
 	}
 
-	baseDir := confkit.BaseDir(mainConfigPath)
+	baseDir := c.BaseDir()
+	if baseDir == "" && mainConfigPath != "" {
+		baseDir = confkit.BaseDir(mainConfigPath)
+	}
 
-	// Load LLM config if specified
-	if c.LLM.File != "" {
-		llmCfg, err := llmpkg.LoadConfig(confkit.ResolvePath(baseDir, c.LLM.File))
+	// Load LLM config if specified (hydrated by config.Load or fallback)
+	llmCfg := c.LLM.Value
+	if llmCfg == nil && c.LLM.File != "" {
+		if baseDir == "" {
+			log.Fatalf("failed to resolve base dir for llm config %s", c.LLM.File)
+		}
+		var err error
+		llmCfg, err = llmpkg.LoadConfig(confkit.ResolvePath(baseDir, c.LLM.File))
 		if err != nil {
 			log.Fatalf("failed to load llm config: %v", err)
 		}
-		// Apply test environment defaults: use low-cost model for good quality
+	}
+	if llmCfg != nil {
 		if c.IsTestEnv() {
+			llmCfg = llmCfg.Clone()
 			llmCfg.DefaultModel = "google/gemini-2.5-flash-lite"
 		}
 		svc.LLMConfig = llmCfg
 	}
 
 	// Load Executor config if specified
-	if c.Executor.File != "" {
-		executorCfg, err := executorpkg.LoadConfig(confkit.ResolvePath(baseDir, c.Executor.File))
+	executorCfg := c.Executor.Value
+	if executorCfg == nil && c.Executor.File != "" {
+		if baseDir == "" {
+			log.Fatalf("failed to resolve base dir for executor config %s", c.Executor.File)
+		}
+		var err error
+		executorCfg, err = executorpkg.LoadConfig(confkit.ResolvePath(baseDir, c.Executor.File))
 		if err != nil {
 			log.Fatalf("failed to load executor config: %v", err)
 		}
+	}
+	if executorCfg != nil {
 		svc.ExecutorConfig = executorCfg
 	}
 
 	// Load Manager config if specified
-	if c.Manager.File != "" {
-		managerCfg, err := managerpkg.LoadConfig(confkit.ResolvePath(baseDir, c.Manager.File))
+	managerCfg := c.Manager.Value
+	if managerCfg == nil && c.Manager.File != "" {
+		if baseDir == "" {
+			log.Fatalf("failed to resolve base dir for manager config %s", c.Manager.File)
+		}
+		var err error
+		managerCfg, err = managerpkg.LoadConfig(confkit.ResolvePath(baseDir, c.Manager.File))
 		if err != nil {
 			log.Fatalf("failed to load manager config: %v", err)
 		}
-		// Build prompt renderers for each trader
+	}
+	if managerCfg != nil {
 		renderers := make(map[string]*managerpkg.PromptRenderer, len(managerCfg.Traders))
 		digests := make(map[string]string, len(managerCfg.Traders))
 		for i := range managerCfg.Traders {
-			trader := &managerCfg.Traders[i]
-			renderer, err := managerpkg.NewPromptRenderer(trader.PromptTemplate)
+			tr := &managerCfg.Traders[i]
+			renderer, err := managerpkg.NewPromptRenderer(tr.PromptTemplate)
 			if err != nil {
-				log.Fatalf("failed to init manager prompt renderer for trader %s: %v", trader.ID, err)
+				log.Fatalf("failed to init manager prompt renderer for trader %s: %v", tr.ID, err)
 			}
-			renderers[trader.ID] = renderer
-			digests[trader.ID] = renderer.Digest()
+			renderers[tr.ID] = renderer
+			digests[tr.ID] = renderer.Digest()
 		}
 		svc.ManagerConfig = managerCfg
 		svc.ManagerPromptRenderers = renderers
@@ -107,12 +130,18 @@ func NewServiceContext(c config.Config, mainConfigPath string) *ServiceContext {
 	}
 
 	// Load Exchange config if specified
-	if c.Exchange.File != "" {
-		exchangeCfg, err := exchangepkg.LoadConfig(confkit.ResolvePath(baseDir, c.Exchange.File))
+	exchangeCfg := c.Exchange.Value
+	if exchangeCfg == nil && c.Exchange.File != "" {
+		if baseDir == "" {
+			log.Fatalf("failed to resolve base dir for exchange config %s", c.Exchange.File)
+		}
+		var err error
+		exchangeCfg, err = exchangepkg.LoadConfig(confkit.ResolvePath(baseDir, c.Exchange.File))
 		if err != nil {
 			log.Fatalf("failed to load exchange config: %v", err)
 		}
-		// Apply test environment defaults: use testnet endpoints for all providers
+	}
+	if exchangeCfg != nil {
 		if c.IsTestEnv() {
 			for _, provider := range exchangeCfg.Providers {
 				provider.Testnet = true
@@ -130,11 +159,18 @@ func NewServiceContext(c config.Config, mainConfigPath string) *ServiceContext {
 	}
 
 	// Load Market config if specified
-	if c.Market.File != "" {
-		marketCfg, err := marketpkg.LoadConfig(confkit.ResolvePath(baseDir, c.Market.File))
+	marketCfg := c.Market.Value
+	if marketCfg == nil && c.Market.File != "" {
+		if baseDir == "" {
+			log.Fatalf("failed to resolve base dir for market config %s", c.Market.File)
+		}
+		var err error
+		marketCfg, err = marketpkg.LoadConfig(confkit.ResolvePath(baseDir, c.Market.File))
 		if err != nil {
 			log.Fatalf("failed to load market config: %v", err)
 		}
+	}
+	if marketCfg != nil {
 		providers, err := marketCfg.BuildProviders()
 		if err != nil {
 			log.Fatalf("failed to build market providers: %v", err)

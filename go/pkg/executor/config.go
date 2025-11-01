@@ -9,6 +9,8 @@ import (
 	"time"
 
 	"gopkg.in/yaml.v3"
+
+	"nof0-api/pkg/confkit"
 )
 
 // Config controls runtime behaviour for the executor module.
@@ -41,6 +43,7 @@ type Override struct {
 
 // LoadConfig reads configuration from disk.
 func LoadConfig(path string) (*Config, error) {
+	confkit.LoadDotenvOnce()
 	file, err := os.Open(path)
 	if err != nil {
 		return nil, fmt.Errorf("open executor config: %w", err)
@@ -49,8 +52,19 @@ func LoadConfig(path string) (*Config, error) {
 	return LoadConfigFromReader(file)
 }
 
+// MustLoad reads executor configuration from the default project location and panics on error.
+func MustLoad() *Config {
+	path := confkit.MustProjectPath("etc/executor.yaml")
+	cfg, err := LoadConfig(path)
+	if err != nil {
+		panic(err)
+	}
+	return cfg
+}
+
 // LoadConfigFromReader constructs a Config from a reader.
 func LoadConfigFromReader(r io.Reader) (*Config, error) {
+	confkit.LoadDotenvOnce()
 	data, err := io.ReadAll(r)
 	if err != nil {
 		return nil, fmt.Errorf("read executor config: %w", err)

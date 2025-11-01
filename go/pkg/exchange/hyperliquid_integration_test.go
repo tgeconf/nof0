@@ -5,15 +5,15 @@ package exchange_test
 import (
 	"context"
 	"net/http"
+	"nof0-api/pkg/exchange"
 	"os"
-	"path/filepath"
-	"runtime"
 	"strings"
 	"testing"
 	"time"
 
-	_ "nof0-api/internal/bootstrap/dotenv" // auto-load .env for dev/test
-	appcfg "nof0-api/internal/config"
+	// Import for side-effects: registers hyperliquid providers
+	_ "nof0-api/pkg/exchange/hyperliquid"
+
 	hl "nof0-api/pkg/exchange/hyperliquid"
 
 	"github.com/ethereum/go-ethereum/crypto"
@@ -30,11 +30,13 @@ type HLIntegrationSuite struct {
 
 func (s *HLIntegrationSuite) SetupSuite() {
 	// Load exchange config via config module helpers (no env fallback; panic if missing).
-	cfg := appcfg.MustLoadExchange()
-	s.Coin = os.Getenv("HYPERLIQUID_TEST_COIN")
-	if s.Coin == "" {
-		s.Coin = "BTC"
+	cfg := exchange.MustLoad()
+	s.Coin = "BTC"
+
+	for _, provider := range cfg.Providers {
+		provider.Testnet = true
 	}
+
 	def := cfg.Default
 	if def == "" {
 		for k := range cfg.Providers {
@@ -43,9 +45,6 @@ func (s *HLIntegrationSuite) SetupSuite() {
 		}
 	}
 	if p, ok := cfg.Providers[def]; ok {
-		if v := os.Getenv("HYPERLIQUID_TESTNET"); !(strings.TrimSpace(v) == "0" || strings.EqualFold(v, "false")) {
-			p.Testnet = true
-		}
 		if p.Timeout == 0 {
 			p.Timeout = 20 * time.Second
 		}
@@ -166,27 +165,3 @@ func (s *HLIntegrationSuite) Test_InfoEndpoints_SubAccounts_Vault() {
 func TestHLIntegrationSuite(t *testing.T) {
 	suite.Run(t, new(HLIntegrationSuite))
 }
-
-// findRepoRoot walks up from this file location to find go.mod/.git as repo root.
-func findRepoRoot() string {
-	if _, file, _, ok := runtime.Caller(0); ok {
-		dir := filepath.Dir(file)
-		for i := 0; i < 8; i++ {
-			if exists(filepath.Join(dir, "go.mod")) || exists(filepath.Join(dir, ".git")) {
-				return dir
-			}
-			parent := filepath.Dir(dir)
-			if parent == dir {
-				break
-			}
-			dir = parent
-		}
-	}
-	// Fallback to current working directory
-	if wd, err := os.Getwd(); err == nil {
-		return wd
-	}
-	return "."
-}
-
-func exists(p string) bool { _, err := os.Stat(p); return err == nil }
