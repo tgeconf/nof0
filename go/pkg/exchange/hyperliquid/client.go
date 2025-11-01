@@ -42,6 +42,14 @@ type Client struct {
 	assetMu    sync.RWMutex
 	assetIndex map[string]int
 	assetInfo  map[string]AssetInfo
+
+	// Trade defaults / formatting
+	defaultSlippage float64
+	priceSigFigs    int
+
+	// Asset directory cache
+	assetTTL     time.Duration
+	assetLastRef time.Time
 }
 
 // ClientOption customises the Hyperliquid client.
@@ -83,6 +91,36 @@ func WithClock(clock func() time.Time) ClientOption {
 	}
 }
 
+// WithDefaultSlippage configures a default slippage fraction used by helpers
+// when caller does not specify one (e.g. 0.01 = 1%).
+func WithDefaultSlippage(slippage float64) ClientOption {
+	return func(c *Client) {
+		if slippage > 0 {
+			c.defaultSlippage = slippage
+		}
+	}
+}
+
+// WithPriceSigFigs sets the default number of price significant figures
+// used by helper methods when formatting prices.
+func WithPriceSigFigs(sigfigs int) ClientOption {
+	return func(c *Client) {
+		if sigfigs >= 1 {
+			c.priceSigFigs = sigfigs
+		}
+	}
+}
+
+// WithAssetCacheTTL sets a time-to-live for the asset directory cache.
+// When positive, the client refreshes asset metadata after TTL elapses.
+func WithAssetCacheTTL(ttl time.Duration) ClientOption {
+	return func(c *Client) {
+		if ttl > 0 {
+			c.assetTTL = ttl
+		}
+	}
+}
+
 // NewClient constructs a Hyperliquid trading client using the provided private key.
 func NewClient(privateKeyHex string, isTestnet bool, opts ...ClientOption) (*Client, error) {
 	if privateKeyHex == "" {
@@ -100,13 +138,14 @@ func NewClient(privateKeyHex string, isTestnet bool, opts ...ClientOption) (*Cli
 		httpClient: &http.Client{
 			Timeout: defaultHTTPTimeout,
 		},
-		signer:     signer,
-		address:    signer.GetAddress(),
-		isTestnet:  isTestnet,
-		logger:     log.Default(),
-		clock:      time.Now,
-		assetIndex: make(map[string]int),
-		assetInfo:  make(map[string]AssetInfo),
+		signer:       signer,
+		address:      signer.GetAddress(),
+		isTestnet:    isTestnet,
+		logger:       log.Default(),
+		clock:        time.Now,
+		assetIndex:   make(map[string]int),
+		assetInfo:    make(map[string]AssetInfo),
+		priceSigFigs: 5,
 	}
 	if isTestnet {
 		client.infoURL = testnetInfoURL

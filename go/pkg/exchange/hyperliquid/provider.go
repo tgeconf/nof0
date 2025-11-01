@@ -3,6 +3,7 @@ package hyperliquid
 import (
 	"context"
 	"net/http"
+	"strings"
 
 	"nof0-api/pkg/exchange"
 )
@@ -77,4 +78,39 @@ func (p *Provider) GetAccountValue(ctx context.Context) (float64, error) {
 // GetAssetIndex resolves asset index for a symbol.
 func (p *Provider) GetAssetIndex(ctx context.Context, coin string) (int, error) {
 	return p.client.GetAssetIndex(ctx, coin)
+}
+
+// Convenience wrappers (not part of the generic exchange.Provider interface)
+
+// IOCMarket places an IOC order using a small price slippage as market.
+func (p *Provider) IOCMarket(ctx context.Context, coin string, isBuy bool, qty float64, slippage float64, reduceOnly bool) (*exchange.OrderResponse, error) {
+	return p.client.IOCMarket(ctx, coin, isBuy, qty, slippage, reduceOnly)
+}
+
+// SetStopLoss places a reduce-only trigger order as stop loss.
+// positionSide: "LONG" or "SHORT".
+func (p *Provider) SetStopLoss(ctx context.Context, coin string, positionSide string, qty float64, stopPrice float64) error {
+	isBuy := strings.EqualFold(positionSide, "SHORT") // buy to cover short
+	return p.client.PlaceTriggerReduceOnly(ctx, coin, isBuy, qty, stopPrice, "sl")
+}
+
+// SetTakeProfit places a reduce-only trigger order as take profit.
+// positionSide: "LONG" or "SHORT".
+func (p *Provider) SetTakeProfit(ctx context.Context, coin string, positionSide string, qty float64, takeProfit float64) error {
+	isBuy := strings.EqualFold(positionSide, "SHORT")
+	return p.client.PlaceTriggerReduceOnly(ctx, coin, isBuy, qty, takeProfit, "tp")
+}
+
+// CancelAllBySymbol cancels all resting orders for the given symbol.
+func (p *Provider) CancelAllBySymbol(ctx context.Context, coin string) error {
+	idx, err := p.client.GetAssetIndex(ctx, coin)
+	if err != nil {
+		return err
+	}
+	return p.client.CancelAllOrders(ctx, idx)
+}
+
+// FormatSize rounds a float quantity to szDecimals and returns a string.
+func (p *Provider) FormatSize(ctx context.Context, coin string, qty float64) (string, error) {
+	return p.client.FormatSize(ctx, coin, qty)
 }

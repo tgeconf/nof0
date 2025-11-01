@@ -109,17 +109,20 @@ func validateOrder(order exchange.Order) error {
 	if order.Asset < 0 {
 		return errInvalidAsset
 	}
-	if strings.TrimSpace(order.LimitPx) == "" {
-		return errInvalidPrice
-	}
-	if strings.TrimSpace(order.Sz) == "" {
+	if strings.TrimSpace(order.Sz) == "" || !isPositiveDecimal(order.Sz) {
 		return errInvalidSize
 	}
-	if !isPositiveDecimal(order.LimitPx) {
-		return errInvalidPrice
-	}
-	if !isPositiveDecimal(order.Sz) {
-		return errInvalidSize
+	// Accept trigger-only orders without a limit price
+	if order.OrderType.Trigger != nil || strings.TrimSpace(order.TriggerPx) != "" {
+		// For trigger orders, require a valid trigger price
+		if !isPositiveDecimal(order.TriggerPx) {
+			return fmt.Errorf("hyperliquid: trigger price must be positive")
+		}
+	} else {
+		// Otherwise require a valid limit price
+		if strings.TrimSpace(order.LimitPx) == "" || !isPositiveDecimal(order.LimitPx) {
+			return errInvalidPrice
+		}
 	}
 	if len(order.Cloid) > 128 {
 		return fmt.Errorf("hyperliquid: cloid longer than 128 characters")
@@ -148,22 +151,50 @@ func isZeroDecimal(value string) bool {
 }
 
 func convertOrder(order exchange.Order) (orderPayload, error) {
-	if order.OrderType.Limit == nil {
-		return orderPayload{}, fmt.Errorf("hyperliquid: only limit order type supported at the moment")
-	}
-	return orderPayload{
+	// Build base payload
+	payload := orderPayload{
 		Asset:      order.Asset,
 		IsBuy:      order.IsBuy,
 		LimitPx:    order.LimitPx,
 		Sz:         order.Sz,
 		ReduceOnly: order.ReduceOnly,
-		OrderType: orderTypePayload{
-			Limit: &limitOrderPayload{TIF: order.OrderType.Limit.TIF},
-		},
 		Cloid:      order.Cloid,
-		TriggerPx:  order.TriggerPx,
-		TriggerRel: order.TriggerRel,
-	}, nil
+	}
+
+	// Prefer explicit trigger order if provided
+	if order.OrderType.Trigger != nil || (strings.TrimSpace(order.TriggerPx) != "" && order.OrderType.Limit == nil) {
+		if strings.TrimSpace(order.TriggerPx) == "" {
+			return orderPayload{}, fmt.Errorf("hyperliquid: trigger order requires trigger price")
+		}
+		payload.OrderType = orderTypePayload{
+			Trigger: &triggerOrderPayload{
+				IsMarket:  order.OrderType.Trigger != nil && order.OrderType.Trigger.IsMarket,
+				TriggerPx: order.TriggerPx,
+				Tpsl: func() string {
+					if order.OrderType.Trigger != nil {
+						return order.OrderType.Trigger.Tpsl
+					}
+					return ""
+				}(),
+				TriggerRel: order.TriggerRel,
+			},
+		}
+		// HL expects triggerPx inside orderType.trigger. Do not set top-level fields.
+		return payload, nil
+	}
+
+	// Fallback to limit order
+	if order.OrderType.Limit == nil {
+		return orderPayload{}, fmt.Errorf("hyperliquid: order type not specified (limit or trigger)")
+	}
+	payload.OrderType = orderTypePayload{
+		Limit: &limitOrderPayload{TIF: order.OrderType.Limit.TIF},
+	}
+	// For legacy compatibility, if callers set TriggerPx without Trigger type, include as top-level
+	// fields (some older payload shapes rely on this). Safe to omit otherwise.
+	payload.TriggerPx = order.TriggerPx
+	payload.TriggerRel = order.TriggerRel
+	return payload, nil
 }
 
 func aggressiveLimitPrice(isBuy bool) string {

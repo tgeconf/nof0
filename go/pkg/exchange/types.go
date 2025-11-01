@@ -16,12 +16,24 @@ const (
 
 // OrderType captures optional order configuration such as limit parameters.
 type OrderType struct {
-	Limit *LimitOrderType `json:"limit,omitempty"`
+	Limit   *LimitOrderType   `json:"limit,omitempty"`
+	Trigger *TriggerOrderType `json:"trigger,omitempty"`
 }
 
 // LimitOrderType defines limit order specific fields.
 type LimitOrderType struct {
 	TIF string `json:"tif"` // Valid values: "Alo", "Ioc", "Gtc"
+}
+
+// TriggerOrderType represents a trigger order (e.g. stop loss / take profit).
+// To keep the common type compact across exchanges, only generic fields are
+// included here. Venue-specific nuances are handled in the provider layer.
+type TriggerOrderType struct {
+	// If true, executes a market-style order when triggered; otherwise limit.
+	IsMarket bool `json:"isMarket"`
+	// Optional semantic to distinguish take-profit vs stop-loss when supported
+	// by the venue (e.g. "tp" / "sl").
+	Tpsl string `json:"tpsl,omitempty"`
 }
 
 // Order describes a normalized order request.
@@ -40,13 +52,13 @@ type Order struct {
 // Position captures live position details.
 type Position struct {
 	Coin           string   `json:"coin"`
-	EntryPx        string   `json:"entryPx"`
+	EntryPx        *string  `json:"entryPx"`
 	PositionValue  string   `json:"positionValue"`
 	Szi            string   `json:"szi"`            // Signed position size.
 	UnrealizedPnl  string   `json:"unrealizedPnl"`  // Unrealised profit & loss.
 	ReturnOnEquity string   `json:"returnOnEquity"` // ROE in percentage string.
 	Leverage       Leverage `json:"leverage"`
-	LiquidationPx  string   `json:"liquidationPx,omitempty"`
+	LiquidationPx  *string  `json:"liquidationPx,omitempty"`
 }
 
 // Leverage contains leverage settings for an instrument.

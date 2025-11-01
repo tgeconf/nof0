@@ -46,11 +46,19 @@ type orderPayload struct {
 }
 
 type orderTypePayload struct {
-	Limit *limitOrderPayload `json:"limit,omitempty" msgpack:"limit,omitempty"`
+	Limit   *limitOrderPayload   `json:"limit,omitempty" msgpack:"limit,omitempty"`
+	Trigger *triggerOrderPayload `json:"trigger,omitempty" msgpack:"trigger,omitempty"`
 }
 
 type limitOrderPayload struct {
 	TIF string `json:"tif" msgpack:"tif"`
+}
+
+type triggerOrderPayload struct {
+	IsMarket   bool   `json:"isMarket" msgpack:"isMarket"`
+	TriggerPx  string `json:"triggerPx" msgpack:"triggerPx"`
+	Tpsl       string `json:"tpsl,omitempty" msgpack:"tpsl,omitempty"`
+	TriggerRel string `json:"triggerRel,omitempty" msgpack:"triggerRel,omitempty"`
 }
 
 // Cancel identifies an order to cancel (public API input).

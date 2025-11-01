@@ -116,13 +116,10 @@ func computeCloseLimit(mark string, isBuy bool) string {
 			}
 			result := new(big.Rat).Mul(price, multiplier)
 			if result.Sign() > 0 {
-				decimals := decimalsForString(trimmed)
-				if decimals < 4 {
-					decimals = 4
-				}
-				formatted := trimTrailingZeros(result.FloatString(decimals))
-				if formatted != "" {
-					return formatted
+				// Round to 5 significant figures for submission consistency
+				f, _ := new(big.Rat).Set(result).Float64()
+				if f > 0 {
+					return RoundPriceToSigFigs(f, 5)
 				}
 			}
 		}

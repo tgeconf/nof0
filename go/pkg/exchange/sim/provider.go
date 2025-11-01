@@ -78,7 +78,9 @@ func (p *Provider) PlaceOrder(ctx context.Context, order exchange.Order) (*excha
 		cur -= sz
 	}
 	pos.Szi = strconv.FormatFloat(cur, 'f', -1, 64)
-	pos.EntryPx = order.LimitPx
+	// keep a copy for entry price
+	entryPx := order.LimitPx
+	pos.EntryPx = &entryPx
 	// store last price
 	p.lastPx[coin] = order.LimitPx
 	// keep leverage if set

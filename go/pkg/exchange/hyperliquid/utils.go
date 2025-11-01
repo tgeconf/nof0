@@ -3,7 +3,10 @@ package hyperliquid
 import (
 	"context"
 	"fmt"
+	"math"
+	"strconv"
 	"strings"
+	"time"
 )
 
 // GetAssetIndex resolves the exchange asset index for the given coin.
@@ -12,6 +15,8 @@ func (c *Client) GetAssetIndex(ctx context.Context, coin string) (int, error) {
 	if key == "" {
 		return 0, fmt.Errorf("hyperliquid: empty coin symbol")
 	}
+
+	_ = c.maybeRefreshAssetDirectory(ctx)
 
 	if idx, ok := c.cachedAssetIndex(key); ok {
 		return idx, nil
@@ -31,6 +36,7 @@ func (c *Client) GetAssetInfo(ctx context.Context, coin string) (*AssetInfo, err
 	if key == "" {
 		return nil, fmt.Errorf("hyperliquid: empty coin symbol")
 	}
+	_ = c.maybeRefreshAssetDirectory(ctx)
 	if info, ok := c.cachedAssetInfo(key); ok {
 		return &info, nil
 	}
@@ -96,6 +102,11 @@ func (c *Client) refreshAssetDirectory(ctx context.Context) error {
 	c.assetMu.Lock()
 	c.assetIndex = index
 	c.assetInfo = info
+	if c.clock != nil {
+		c.assetLastRef = c.clock()
+	} else {
+		c.assetLastRef = time.Now()
+	}
 	c.assetMu.Unlock()
 	return nil
 }
@@ -103,3 +114,58 @@ func (c *Client) refreshAssetDirectory(ctx context.Context) error {
 func canonicalAssetKey(symbol string) string {
 	return strings.ToUpper(strings.TrimSpace(symbol))
 }
+
+// maybeRefreshAssetDirectory refreshes the asset directory if the TTL has
+// expired. It swallows errors to keep call sites simple; the normal lookup
+// path will attempt a hard refresh if needed.
+func (c *Client) maybeRefreshAssetDirectory(ctx context.Context) error {
+	if c.assetTTL <= 0 {
+		return nil
+	}
+	now := time.Now
+	if c.clock != nil {
+		now = c.clock
+	}
+	c.assetMu.RLock()
+	last := c.assetLastRef
+	c.assetMu.RUnlock()
+	if last.IsZero() || now().Sub(last) > c.assetTTL {
+		return c.refreshAssetDirectory(ctx)
+	}
+	return nil
+}
+
+// RoundPriceToSigFigs rounds the price to the specified number of significant
+// figures. It returns a decimal string with trimmed trailing zeros.
+func RoundPriceToSigFigs(price float64, sigfigs int) string {
+	if sigfigs <= 0 || !isFinite(price) || price == 0 {
+		return "0"
+	}
+	sign := 1.0
+	if price < 0 {
+		sign = -1
+		price = -price
+	}
+	exp := math.Floor(math.Log10(price))
+	scale := math.Pow(10, float64(sigfigs)-1-exp)
+	rounded := sign * math.Round(price*scale) / scale
+	if rounded == 0 || !isFinite(rounded) {
+		return "0"
+	}
+	absr := rounded
+	if absr < 0 {
+		absr = -absr
+	}
+	// decimals required to preserve sigfigs in fixed notation
+	decExp := math.Floor(math.Log10(absr))
+	decimals := int(math.Max(0, float64(sigfigs-1)-decExp))
+	s := strconv.FormatFloat(rounded, 'f', decimals, 64)
+	s = strings.TrimRight(s, "0")
+	s = strings.TrimRight(s, ".")
+	if s == "" || s == "-" {
+		return "0"
+	}
+	return s
+}
+
+func isFinite(f float64) bool { return !math.IsNaN(f) && !math.IsInf(f, 0) }

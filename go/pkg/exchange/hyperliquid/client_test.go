@@ -1,6 +1,7 @@
 package hyperliquid
 
 import (
+	"context"
 	"encoding/binary"
 	"strconv"
 	"testing"
@@ -196,6 +197,42 @@ func TestValidateOrder(t *testing.T) {
 	require.Error(t, err)
 }
 
+func TestConvertOrder_Trigger(t *testing.T) {
+	// Build a trigger order: market take-profit at 25000
+	ord := exchange.Order{
+		Asset:      1,
+		IsBuy:      false,
+		Sz:         "0.1",
+		TriggerPx:  "25000",
+		OrderType:  exchange.OrderType{Trigger: &exchange.TriggerOrderType{IsMarket: true, Tpsl: "tp"}},
+		ReduceOnly: true,
+	}
+	payload, err := convertOrder(ord)
+	require.NoError(t, err)
+	require.Nil(t, payload.OrderType.Limit)
+	require.NotNil(t, payload.OrderType.Trigger)
+	require.Equal(t, "25000", payload.OrderType.Trigger.TriggerPx)
+	require.Equal(t, "tp", payload.OrderType.Trigger.Tpsl)
+	require.True(t, payload.OrderType.Trigger.IsMarket)
+	// top-level trigger fields should be empty when nested under orderType.trigger
+	require.Equal(t, "", payload.TriggerPx)
+	require.Equal(t, "", payload.TriggerRel)
+}
+
+func TestValidateOrder_TriggerOnly(t *testing.T) {
+	ord := exchange.Order{
+		Asset:     1,
+		IsBuy:     true,
+		Sz:        "0.05",
+		TriggerPx: "123.45",
+		OrderType: exchange.OrderType{Trigger: &exchange.TriggerOrderType{IsMarket: true, Tpsl: "sl"}},
+	}
+	err := validateOrder(ord)
+	require.NoError(t, err)
+	_, err = buildPlaceOrderAction([]exchange.Order{ord})
+	require.NoError(t, err)
+}
+
 func TestIsZeroDecimal(t *testing.T) {
 	require.True(t, isZeroDecimal("0"))
 	require.True(t, isZeroDecimal("-0.000"))
@@ -262,4 +299,40 @@ func TestBuildCloseOrder(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, ok)
 	require.Equal(t, defaultAggressiveBuyLimit, order.LimitPx)
+}
+
+func TestFormatSizeAndIOCMarket(t *testing.T) {
+	// Build a client with fake signer; only utility methods exercised (no HTTP)
+	c, err := NewClient("0x4c0883a69102937d6231471b5dbb6204fe5129617082796fe3f6a4ab2ed5f8d2", true)
+	require.NoError(t, err)
+	// inject asset directory cache directly to avoid HTTP
+	c.assetMu.Lock()
+	c.assetIndex = map[string]int{"BTC": 0}
+	c.assetInfo = map[string]AssetInfo{"BTC": {
+		Name: "BTC", SzDecimals: 3, Index: 0, MidPx: "50000", MarkPx: "50010",
+	}}
+	c.assetMu.Unlock()
+
+	sz, err := c.FormatSize(context.Background(), "BTC", 0.12349)
+	require.NoError(t, err)
+	require.Equal(t, "0.123", sz)
+
+	// Verify RoundPriceToSigFigs
+	p := RoundPriceToSigFigs(50000*1.01, 5)
+	require.NotEmpty(t, p)
+}
+
+func TestClientOptionsDefaults(t *testing.T) {
+	// defaults
+	c, err := NewClient("0x4c0883a69102937d6231471b5dbb6204fe5129617082796fe3f6a4ab2ed5f8d2", true)
+	require.NoError(t, err)
+	require.Equal(t, 5, c.priceSigFigs)
+	require.Equal(t, 0.0, c.defaultSlippage)
+
+	// overrides
+	c2, err := NewClient("0x4c0883a69102937d6231471b5dbb6204fe5129617082796fe3f6a4ab2ed5f8d2", true,
+		WithPriceSigFigs(4), WithDefaultSlippage(0.02))
+	require.NoError(t, err)
+	require.Equal(t, 4, c2.priceSigFigs)
+	require.InDelta(t, 0.02, c2.defaultSlippage, 1e-12)
 }
