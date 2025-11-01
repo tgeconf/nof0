@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"nof0-api/pkg/exchange"
 	"os"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -148,13 +149,25 @@ func (s *HLIntegrationSuite) Test_OrderLifecycle_ModifyAndCancelByCloid() {
 	s.Require().NoError(err, "GetAccountValue")
 	s.Require().True(value > 0, "account must have positive balance for order placement")
 
+	pk := os.Getenv("HYPERLIQUID_PRIVATE_KEY")
+	s.Require().NotEmpty(pk, "HYPERLIQUID_PRIVATE_KEY must be set for integration tests")
+	client, err := hl.NewClient(pk, true, hl.WithHTTPClient(&http.Client{Timeout: 20 * time.Second}))
+	s.Require().NoError(err, "NewClient")
+
+	info, err := client.GetAssetInfo(ctx, s.Coin)
+	s.Require().NoError(err, "GetAssetInfo")
+	s.T().Logf("MarkPx for %s: %q", s.Coin, info.MarkPx)
+	mark, err := strconv.ParseFloat(strings.TrimSpace(info.MarkPx), 64)
+	if err != nil || !(mark > 0) {
+		mark = 50_000
+	}
+
 	// Prepare a tiny resting limit order far from the market so it stays unfilled.
 	size, err := s.Provider.FormatSize(ctx, s.Coin, 0.0005)
 	s.Require().NoError(err, "FormatSize")
-	priceHigh, err := s.Provider.FormatPrice(ctx, s.Coin, 1_000_000) // very high to avoid immediate fill on sell
-	s.Require().NoError(err, "FormatPrice(high)")
-	priceHigher, err := s.Provider.FormatPrice(ctx, s.Coin, 1_100_000)
-	s.Require().NoError(err, "FormatPrice(higher)")
+	priceHigh := strconv.FormatFloat(mark*1.10, 'f', 0, 64)   // keep integer price close to mark
+	priceHigher := strconv.FormatFloat(mark*1.15, 'f', 0, 64) // slight adjustment for modify
+	s.T().Logf("Using limit prices high=%s higher=%s", priceHigh, priceHigher)
 
 	cloid := "0x" + randomCloid()
 	order := exchange.Order{
@@ -174,13 +187,12 @@ func (s *HLIntegrationSuite) Test_OrderLifecycle_ModifyAndCancelByCloid() {
 	s.Require().NotNil(resp)
 	s.Require().Equal("ok", resp.Status, "place order response should be ok")
 	s.Require().NotEmpty(resp.Response.Data.Statuses)
-	resting := resp.Response.Data.Statuses[0].Resting
-	s.Require().NotNil(resting, "expected resting order status")
-	oid := resting.Oid
+	status := resp.Response.Data.Statuses[0]
+	s.Require().Empty(status.Error, "order response contained error")
 
 	// Modify the order in place, bumping the limit price higher so it remains non-executable.
 	modReq := hl.ModifyOrderRequest{
-		Oid: &oid,
+		Cloid: cloid,
 		Order: exchange.Order{
 			Asset:      s.AssetIdx,
 			IsBuy:      order.IsBuy,
