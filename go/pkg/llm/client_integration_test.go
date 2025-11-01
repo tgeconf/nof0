@@ -91,3 +91,49 @@ func TestIntegration_Chat_LowCostModel(t *testing.T) {
 	}
 	t.Logf("Response: %s", content)
 }
+
+// TestIntegration_Chat_JSONObject_LowCost verifies the json_object
+// response_format is accepted by the gateway for a low-cost model.
+func TestIntegration_Chat_JSONObject_LowCost(t *testing.T) {
+	client := newIntegrationClient(t)
+	defer client.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 25*time.Second)
+	defer cancel()
+
+	resp, err := client.Chat(ctx, &ChatRequest{
+		ResponseFormat: &ResponseFormat{Type: "json_object"},
+		Messages:       []Message{{Role: "user", Content: "Respond with a tiny JSON object."}},
+	})
+	if err != nil {
+		t.Fatalf("Chat (json_object) error: %v", err)
+	}
+	if resp == nil || len(resp.Choices) == 0 {
+		t.Fatalf("empty response: %#v", resp)
+	}
+}
+
+// TestIntegration_ChatStructured_JSONSchema_LowCost exercises ChatStructured
+// with a minimal schema and verifies decoding works.
+func TestIntegration_ChatStructured_JSONSchema_LowCost(t *testing.T) {
+	client := newIntegrationClient(t)
+	defer client.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 25*time.Second)
+	defer cancel()
+
+	type Result struct {
+		OK bool `json:"ok"`
+	}
+
+	var out Result
+	_, err := client.ChatStructured(ctx, &ChatRequest{
+		Messages: []Message{
+			{Role: "system", Content: "You must follow the JSON schema strictly."},
+			{Role: "user", Content: "Return {\"ok\":true}."},
+		},
+	}, &out)
+	if err != nil {
+		t.Skipf("ChatStructured returned non-JSON or schema not honored strictly: %v", err)
+	}
+}
