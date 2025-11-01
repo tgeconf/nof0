@@ -3,6 +3,7 @@ module nof0-api
 go 1.22.3
 
 require (
+	github.com/dnaeon/go-vcr v1.2.0
 	github.com/ethereum/go-ethereum v1.14.13
 	github.com/jackc/pgx/v5 v5.7.4
 	github.com/openai/openai-go v1.12.0
