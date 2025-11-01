@@ -40,7 +40,7 @@ manager:
 traders:
   - id: trader_a
     name: Aggressive Short
-    exchange: hyperliquid
+    exchange_provider: hyperliquid
     prompt_template: prompts/manager/aggressive_short.tmpl
     decision_interval: 4m
     allocation_pct: 40
@@ -58,7 +58,7 @@ traders:
 
   - id: trader_b
     name: Conservative Long
-    exchange: hyperliquid
+    exchange_provider: hyperliquid
     prompt_template: prompts/manager/conservative_long.tmpl
     decision_interval: 5m
     allocation_pct: 30
@@ -128,7 +128,7 @@ manager:
 traders:
   - id: t1
     name: Trader1
-    exchange: ex
+    exchange_provider: ex
     prompt_template: prompt.tmpl
     decision_interval: 3m
     allocation_pct: 80
@@ -146,7 +146,7 @@ traders:
 
   - id: t2
     name: Trader2
-    exchange: ex
+    exchange_provider: ex
     prompt_template: prompt.tmpl
     decision_interval: 3m
     allocation_pct: 30
@@ -199,7 +199,7 @@ manager:
 traders:
   - id: t1
     name: Trader1
-    exchange: ex
+    exchange_provider: ex
     prompt_template: missing.tmpl
     decision_interval: 3m
     allocation_pct: 50

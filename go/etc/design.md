@@ -12,6 +12,8 @@
 - `etc/executor.yaml`：执行器运行参数（风险阈值、模型选择、策略开关等，待新增）。
 - `etc/manager.yaml`：虚拟交易员与资源编排配置（Trader 列表、交易所账号、监控配置等，待新增）。
 - `etc/prompts/`：Prompt 模板仓库（按模块划分子目录，如 `executor/`、`manager/`），与配置文件同目录发布以便统一变更。
+- `etc/exchange.yaml`：交易所 Provider 统一配置（访问凭证、Host、重试与限流策略，后续需要与 `pkg/exchange` 实现对齐）。
+- `etc/market.yaml`：行情数据 Provider 配置（数据源、刷新频率、缓存 TTL、Mock 选项等，需与 `pkg/market` 约定加载）。
 - `etc/traders/*.yaml`（可选）：当 Trader 配置需要拆分时使用，主配置通过路径引用。
 - `etc/secrets.example`：列出需要通过环境变量注入的敏感键名，避免直接写入 YAML。
 
@@ -69,9 +71,27 @@
 - 在加载阶段校验：
   - Trader `allocation_pct` 总和 ≤ 100%，并允许保留 `reserve_equity_pct`。
   - Prompt 模板、热路径文件存在。
+  - Trader 通过 `exchange_provider` / `market_provider` 字段引用统一的 Provider ID，校验需确保对应 ID 在 `exchange.Config` / `market.Config` 中存在。
   - Exchange 配置中敏感信息必须由环境变量提供。
 - 对 Trader 列表支持按文件拆分：当 `TraderConfig` 设置 `config_file` 时，允许从外部文件读取并合并。
 - 为后续热加载预留 `Watcher` 接口（比如 `type WatchCallback func(*Config)`），与主配置保持一致。
+
+### Exchange 模块
+- 现有 `pkg/exchange` 实现尚未提供统一的 YAML/JSON 配置加载逻辑，需要补齐：
+  - 设计 `exchange.Config` 结构（建议包含 `type`, `base_url`, `api_key`, `api_secret`, `passphrase`, `timeout`, `max_retries`, `rate_limit` 等字段）。
+  - 支持环境变量覆盖敏感信息。
+  - 在 `internal/config` 中新增 `ExchangeSection`，可加载 `etc/exchange.yaml` 并在 `svc.ServiceContext` 中注册 Provider 工厂。
+- 文档需要明确不同交易所的差异化配置字段，以及与 `pkg/manager` 引用的 `ExchangeConfig` 之间的映射关系，避免重复定义。
+- 当前 `pkg/manager.Config.TraderConfig` 已通过 `exchange_provider` 映射到 `exchange.Config` 的 Provider ID，应继续剥离冗余的旧字段（如 `exchange`）。
+
+### Market 模块
+- `pkg/market` 当前缺乏统一的配置入口，需要定义 `market.Config` 用于描述：
+  - 数据源（如 Hyperliquid、Backtest Mock）选择与认证信息。
+  - 刷新频率、批量大小、缓存 TTL。
+  - 指标计算开关或参数（EMA 长度、MACD 参数等）。
+- 在 `etc/market.yaml` 中给出默认模板，`internal/config` 需要增加 `MarketSection` 并在 `svc.ServiceContext` 中注入 Market Provider 初始化逻辑。
+- 为测试/回放场景预留 `mode` 字段（如 `live` / `replay` / `mock`），并约定额外文件路径或数据源配置。
+- 现阶段 Market Provider 多通过代码常量初始化，缺少配置驱动能力，需在实现中补齐对上述字段的消费路径。
 
 ### Exchange / Market / 其他外部依赖
 - 在 Manager 配置中集中维护交易所凭证，避免散落在代码或环境变量中。
@@ -100,3 +120,6 @@
 - [ ] `pkg/llm`: 补充从主配置注入的构造逻辑，并校验环境变量覆盖顺序。
 - [ ] `svc.NewServiceContext`: 按新的配置结构初始化 LLM 客户端、Manager、Executor，确保依赖注入一致。
 - [ ] `docs`: 在 README 或开发文档中补充配置使用说明及环境变量清单。
+- [ ] `pkg/exchange`: 设计统一的配置结构/加载函数，并在 `internal/config` 中增加 `ExchangeSection` 与 ServiceContext 注入逻辑。
+- [ ] `pkg/market`: 定义配置模型与加载流程，提供默认模板 `etc/market.yaml` 并在 ServiceContext 中注入 Provider。
+- [ ] `etc/exchange.yaml` / `etc/market.yaml`: 提供示例配置（含必填字段、环境变量占位），确保与代码实现一致。

@@ -30,6 +30,12 @@ Executor:
 Manager:
   File: manager.yaml
 
+Exchange:
+  File: exchange.yaml
+
+Market:
+  File: market.yaml
+
 # CORS settings
 Cors:
   AllowOrigins: ['*']

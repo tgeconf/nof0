@@ -37,7 +37,9 @@ type ManagerConfig struct {
 type TraderConfig struct {
 	ID               string         `yaml:"id"`
 	Name             string         `yaml:"name"`
-	Exchange         string         `yaml:"exchange"`
+	Exchange         string         `yaml:"exchange"` // deprecated; prefer ExchangeProvider
+	ExchangeProvider string         `yaml:"exchange_provider"`
+	MarketProvider   string         `yaml:"market_provider"`
 	PromptTemplate   string         `yaml:"prompt_template"`
 	DecisionInterval time.Duration  `yaml:"-"`
 	RiskParams       RiskParameters `yaml:"risk_params"`
@@ -120,6 +122,9 @@ func (c *Config) applyDefaults() {
 	for i := range c.Traders {
 		if strings.TrimSpace(c.Traders[i].DecisionIntervalRaw) == "" {
 			c.Traders[i].DecisionIntervalRaw = "3m"
+		}
+		if strings.TrimSpace(c.Traders[i].ExchangeProvider) == "" && strings.TrimSpace(c.Traders[i].Exchange) != "" {
+			c.Traders[i].ExchangeProvider = strings.TrimSpace(c.Traders[i].Exchange)
 		}
 	}
 	if strings.TrimSpace(c.Monitoring.UpdateIntervalRaw) == "" {
@@ -221,11 +226,11 @@ func (c *Config) Validate() error {
 		if trader.Name == "" {
 			return fmt.Errorf("manager config: traders[%d].name is required", i)
 		}
-		if trader.Exchange == "" {
-			return fmt.Errorf("manager config: traders[%d].exchange is required", i)
+		if strings.TrimSpace(trader.ExchangeProvider) == "" {
+			return fmt.Errorf("manager config: traders[%d].exchange_provider is required", i)
 		}
-		if _, ok := c.Exchanges[trader.Exchange]; !ok {
-			return fmt.Errorf("manager config: traders[%d] references undefined exchange %q", i, trader.Exchange)
+		if _, ok := c.Exchanges[trader.ExchangeProvider]; !ok {
+			return fmt.Errorf("manager config: traders[%d] references undefined exchange provider %q", i, trader.ExchangeProvider)
 		}
 		if trader.PromptTemplate == "" {
 			return fmt.Errorf("manager config: traders[%d].prompt_template is required", i)

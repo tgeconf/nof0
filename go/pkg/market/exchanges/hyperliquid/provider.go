@@ -2,6 +2,7 @@ package hyperliquid
 
 import (
 	"context"
+	"net/http"
 	"sort"
 	"time"
 
@@ -54,6 +55,29 @@ func NewProvider(opts ...ProviderOption) *Provider {
 		client:  client,
 		timeout: cfg.timeout,
 	}
+}
+
+func init() {
+	market.RegisterProvider("hyperliquid", func(name string, cfg *market.ProviderConfig) (market.Provider, error) {
+		opts := []ProviderOption{}
+		clientOptions := []Option{}
+		if cfg.Timeout > 0 {
+			opts = append(opts, WithTimeout(cfg.Timeout))
+		}
+		if cfg.HTTPTimeout > 0 {
+			clientOptions = append(clientOptions, WithHTTPClient(&http.Client{Timeout: cfg.HTTPTimeout}))
+		}
+		if cfg.BaseURL != "" {
+			clientOptions = append(clientOptions, WithBaseURL(cfg.BaseURL))
+		}
+		if cfg.MaxRetries > 0 {
+			clientOptions = append(clientOptions, WithMaxRetries(cfg.MaxRetries))
+		}
+		if len(clientOptions) > 0 {
+			opts = append(opts, WithClientOptions(clientOptions...))
+		}
+		return NewProvider(opts...), nil
+	})
 }
 
 // Snapshot implements market.Provider by returning an aggregated market snapshot.

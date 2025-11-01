@@ -2,6 +2,7 @@ package hyperliquid
 
 import (
 	"context"
+	"net/http"
 
 	"nof0-api/pkg/exchange"
 )
@@ -18,6 +19,19 @@ func NewProvider(privateKeyHex string, isTestnet bool, opts ...ClientOption) (*P
 		return nil, err
 	}
 	return &Provider{client: client}, nil
+}
+
+func init() {
+	exchange.RegisterProvider("hyperliquid", func(name string, cfg *exchange.ProviderConfig) (exchange.Provider, error) {
+		opts := []ClientOption{}
+		if cfg.Timeout > 0 {
+			opts = append(opts, WithHTTPClient(&http.Client{Timeout: cfg.Timeout}))
+		}
+		if cfg.VaultAddress != "" {
+			opts = append(opts, WithVaultAddress(cfg.VaultAddress))
+		}
+		return NewProvider(cfg.PrivateKey, cfg.Testnet, opts...)
+	})
 }
 
 // PlaceOrder delegates to the underlying client.

@@ -9,8 +9,10 @@ import (
 	"nof0-api/internal/config"
 	"nof0-api/internal/data"
 	"nof0-api/internal/model"
+	exchangepkg "nof0-api/pkg/exchange"
 	executorpkg "nof0-api/pkg/executor"
 	managerpkg "nof0-api/pkg/manager"
+	marketpkg "nof0-api/pkg/market"
 )
 
 type ServiceContext struct {
@@ -24,6 +26,14 @@ type ServiceContext struct {
 	ManagerConfig          *managerpkg.Config
 	ManagerPromptRenderers map[string]*managerpkg.PromptRenderer
 	ManagerPromptDigests   map[string]string
+	ExchangeConfig         *exchangepkg.Config
+	ExchangeProviders      map[string]exchangepkg.Provider
+	DefaultExchange        exchangepkg.Provider
+	MarketConfig           *marketpkg.Config
+	MarketProviders        map[string]marketpkg.Provider
+	DefaultMarket          marketpkg.Provider
+	ManagerTraderExchange  map[string]exchangepkg.Provider
+	ManagerTraderMarket    map[string]marketpkg.Provider
 
 	// Optional DB models (injected but unused by handlers/logic for now)
 	DBConn                      sqlx.SqlConn
@@ -71,6 +81,81 @@ func NewServiceContext(c config.Config) *ServiceContext {
 		svc.ManagerConfig = cfg
 		svc.ManagerPromptRenderers = renderers
 		svc.ManagerPromptDigests = digests
+	}
+
+	if cfg := c.Exchange.Config; cfg != nil {
+		providers, err := cfg.BuildProviders()
+		if err != nil {
+			log.Fatalf("failed to init exchange providers: %v", err)
+		}
+		svc.ExchangeConfig = cfg
+		svc.ExchangeProviders = providers
+		if cfg.Default != "" {
+			svc.DefaultExchange = providers[cfg.Default]
+		}
+	}
+
+	if cfg := c.Market.Config; cfg != nil {
+		providers, err := cfg.BuildProviders()
+		if err != nil {
+			log.Fatalf("failed to init market providers: %v", err)
+		}
+		svc.MarketConfig = cfg
+		svc.MarketProviders = providers
+		if cfg.Default != "" {
+			svc.DefaultMarket = providers[cfg.Default]
+		}
+	}
+
+	if svc.ManagerConfig != nil {
+		svc.ManagerTraderExchange = make(map[string]exchangepkg.Provider, len(svc.ManagerConfig.Traders))
+		svc.ManagerTraderMarket = make(map[string]marketpkg.Provider, len(svc.ManagerConfig.Traders))
+		for i := range svc.ManagerConfig.Traders {
+			trader := &svc.ManagerConfig.Traders[i]
+			if trader.ExchangeProvider != "" {
+				provider, ok := svc.ExchangeProviders[trader.ExchangeProvider]
+				if !ok {
+					log.Fatalf("manager trader %s references unknown exchange provider %s", trader.ID, trader.ExchangeProvider)
+				}
+				svc.ManagerTraderExchange[trader.ID] = provider
+			} else if svc.DefaultExchange != nil {
+				svc.ManagerTraderExchange[trader.ID] = svc.DefaultExchange
+			} else {
+				log.Fatalf("manager trader %s has no exchange provider and no default configured", trader.ID)
+			}
+
+			marketProviderID := trader.MarketProvider
+			if marketProviderID == "" && svc.MarketConfig != nil {
+				marketProviderID = svc.MarketConfig.Default
+			}
+			if marketProviderID != "" {
+				provider, ok := svc.MarketProviders[marketProviderID]
+				if !ok {
+					log.Fatalf("manager trader %s references unknown market provider %s", trader.ID, marketProviderID)
+				}
+				svc.ManagerTraderMarket[trader.ID] = provider
+			} else if svc.DefaultMarket != nil {
+				svc.ManagerTraderMarket[trader.ID] = svc.DefaultMarket
+			}
+		}
+	}
+
+	if cfg := c.Exchange.Config; cfg != nil {
+		providers, err := cfg.BuildProviders()
+		if err != nil {
+			log.Fatalf("failed to init exchange providers: %v", err)
+		}
+		svc.ExchangeConfig = cfg
+		svc.ExchangeProviders = providers
+	}
+
+	if cfg := c.Market.Config; cfg != nil {
+		providers, err := cfg.BuildProviders()
+		if err != nil {
+			log.Fatalf("failed to init market providers: %v", err)
+		}
+		svc.MarketConfig = cfg
+		svc.MarketProviders = providers
 	}
 
 	// Only inject DB models when DSN provided; business logic still uses DataLoader.

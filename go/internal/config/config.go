@@ -11,9 +11,13 @@ import (
 	"github.com/zeromicro/go-zero/core/stores/redis"
 	"github.com/zeromicro/go-zero/rest"
 
+	"nof0-api/pkg/exchange"
+	_ "nof0-api/pkg/exchange/hyperliquid"
 	"nof0-api/pkg/executor"
 	"nof0-api/pkg/llm"
 	"nof0-api/pkg/manager"
+	"nof0-api/pkg/market"
+	_ "nof0-api/pkg/market/exchanges/hyperliquid"
 )
 
 type PostgresConf struct {
@@ -44,6 +48,16 @@ type ManagerSection struct {
 	Config *manager.Config `json:"-"`
 }
 
+type ExchangeSection struct {
+	File   string           `json:",optional"`
+	Config *exchange.Config `json:"-"`
+}
+
+type MarketSection struct {
+	File   string         `json:",optional"`
+	Config *market.Config `json:"-"`
+}
+
 type Config struct {
 	rest.RestConf
 	DataPath string          `json:",default=../../mcp/data"`
@@ -54,6 +68,8 @@ type Config struct {
 	LLM      LLMSection      `json:",optional"`
 	Executor ExecutorSection `json:",optional"`
 	Manager  ManagerSection  `json:",optional"`
+	Exchange ExchangeSection `json:",optional"`
+	Market   MarketSection   `json:",optional"`
 }
 
 func MustLoad(path string) *Config {
@@ -92,6 +108,12 @@ func (c *Config) Validate() error {
 		return err
 	}
 	if err := c.validateManager(); err != nil {
+		return err
+	}
+	if err := c.validateExchange(); err != nil {
+		return err
+	}
+	if err := c.validateMarket(); err != nil {
 		return err
 	}
 	return nil
@@ -140,6 +162,26 @@ func (c *Config) validateManager() error {
 	return nil
 }
 
+func (c *Config) validateExchange() error {
+	if c.Exchange.File == "" {
+		return nil
+	}
+	if c.Exchange.Config == nil {
+		return fmt.Errorf("config: exchange file %q loaded without config", c.Exchange.File)
+	}
+	return nil
+}
+
+func (c *Config) validateMarket() error {
+	if c.Market.File == "" {
+		return nil
+	}
+	if c.Market.Config == nil {
+		return fmt.Errorf("config: market file %q loaded without config", c.Market.File)
+	}
+	return nil
+}
+
 func (c *Config) hydrateSections(mainPath string) error {
 	baseDir := filepath.Dir(mainPath)
 	if err := c.loadLLM(baseDir); err != nil {
@@ -149,6 +191,12 @@ func (c *Config) hydrateSections(mainPath string) error {
 		return err
 	}
 	if err := c.loadManager(baseDir); err != nil {
+		return err
+	}
+	if err := c.loadExchange(baseDir); err != nil {
+		return err
+	}
+	if err := c.loadMarket(baseDir); err != nil {
 		return err
 	}
 	return nil
@@ -193,6 +241,34 @@ func (c *Config) loadManager(baseDir string) error {
 	}
 	c.Manager.File = path
 	c.Manager.Config = cfg
+	return nil
+}
+
+func (c *Config) loadExchange(baseDir string) error {
+	if c.Exchange.File == "" {
+		return nil
+	}
+	path := resolvePath(baseDir, c.Exchange.File)
+	cfg, err := exchange.LoadConfig(path)
+	if err != nil {
+		return fmt.Errorf("load exchange config %s: %w", path, err)
+	}
+	c.Exchange.File = path
+	c.Exchange.Config = cfg
+	return nil
+}
+
+func (c *Config) loadMarket(baseDir string) error {
+	if c.Market.File == "" {
+		return nil
+	}
+	path := resolvePath(baseDir, c.Market.File)
+	cfg, err := market.LoadConfig(path)
+	if err != nil {
+		return fmt.Errorf("load market config %s: %w", path, err)
+	}
+	c.Market.File = path
+	c.Market.Config = cfg
 	return nil
 }
 
