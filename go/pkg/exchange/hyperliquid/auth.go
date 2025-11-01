@@ -1,6 +1,7 @@
 package hyperliquid
 
 import (
+	"bytes"
 	"crypto/ecdsa"
 	"encoding/binary"
 	"encoding/hex"
@@ -111,26 +112,30 @@ func buildEIP712Message(action Action, nonce int64, vaultAddress string, isMainn
 	if nonce <= 0 {
 		return nil, fmt.Errorf("hyperliquid: nonce must be positive")
 	}
-	msgpackBytes, err := msgpack.Marshal(action)
-	if err != nil {
+	var buf bytes.Buffer
+	encoder := msgpack.NewEncoder(&buf)
+	encoder.UseCompactInts(true)
+	if err := encoder.Encode(action); err != nil {
 		return nil, fmt.Errorf("hyperliquid: msgpack encode action: %w", err)
 	}
-
-	vaultBytes := make([]byte, common.AddressLength)
-	if vaultAddress != "" {
-		if !common.IsHexAddress(vaultAddress) {
-			return nil, fmt.Errorf("hyperliquid: invalid vault address %q", vaultAddress)
-		}
-		copy(vaultBytes, common.HexToAddress(vaultAddress).Bytes())
-	}
+	msgpackBytes := convertStr16ToStr8(buf.Bytes())
 
 	var nonceBytes [8]byte
 	binary.BigEndian.PutUint64(nonceBytes[:], uint64(nonce))
 
-	payload := make([]byte, 0, len(msgpackBytes)+len(vaultBytes)+len(nonceBytes))
+	payload := make([]byte, 0, len(msgpackBytes)+1+common.AddressLength+len(nonceBytes))
 	payload = append(payload, msgpackBytes...)
-	payload = append(payload, vaultBytes...)
 	payload = append(payload, nonceBytes[:]...)
+
+	if vaultAddress == "" {
+		payload = append(payload, 0x00)
+	} else {
+		if !common.IsHexAddress(vaultAddress) {
+			return nil, fmt.Errorf("hyperliquid: invalid vault address %q", vaultAddress)
+		}
+		payload = append(payload, 0x01)
+		payload = append(payload, common.HexToAddress(vaultAddress).Bytes()...)
+	}
 
 	connectionID := crypto.Keccak256(payload)
 
@@ -140,9 +145,6 @@ func buildEIP712Message(action Action, nonce int64, vaultAddress string, isMainn
 	}
 
 	chainID := int64(1337)
-	if !isMainnet {
-		chainID = 1338
-	}
 	domain := apitypes.TypedDataDomain{
 		Name:              "Exchange",
 		Version:           "1",
@@ -176,6 +178,24 @@ func buildEIP712Message(action Action, nonce int64, vaultAddress string, isMainn
 }
 
 const verifyingContractHex = "0x0000000000000000000000000000000000000000"
+
+func convertStr16ToStr8(data []byte) []byte {
+	result := make([]byte, 0, len(data))
+	for i := 0; i < len(data); {
+		if data[i] == 0xda && i+2 < len(data) {
+			length := int(data[i+1])<<8 | int(data[i+2])
+			if length < 256 && i+3+length <= len(data) {
+				result = append(result, 0xd9, byte(length))
+				result = append(result, data[i+3:i+3+length]...)
+				i += 3 + length
+				continue
+			}
+		}
+		result = append(result, data[i])
+		i++
+	}
+	return result
+}
 
 func typedDataHash(td apitypes.TypedData) ([]byte, error) {
 	domainSeparator, err := td.HashStruct("EIP712Domain", td.Domain.Map())

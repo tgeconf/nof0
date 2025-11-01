@@ -1,6 +1,7 @@
 package hyperliquid
 
 import (
+	"bytes"
 	"context"
 	"encoding/binary"
 	"strconv"
@@ -116,19 +117,24 @@ func TestSignActionDeterministic(t *testing.T) {
 
 func computeReferenceDigest(t *testing.T, action Action, nonce int64, vault string, isMainnet bool) []byte {
 	t.Helper()
-	msgpackBytes, err := msgpack.Marshal(action)
-	require.NoError(t, err)
-
-	vaultBytes := make([]byte, common.AddressLength)
-	if vault != "" {
-		require.True(t, common.IsHexAddress(vault))
-		copy(vaultBytes, common.HexToAddress(vault).Bytes())
-	}
+	var buf bytes.Buffer
+	enc := msgpack.NewEncoder(&buf)
+	enc.UseCompactInts(true)
+	require.NoError(t, enc.Encode(action))
+	msgpackBytes := convertStr16ToStr8(buf.Bytes())
 
 	var nonceBytes [8]byte
 	binary.BigEndian.PutUint64(nonceBytes[:], uint64(nonce))
 
-	payload := append(append(msgpackBytes, vaultBytes...), nonceBytes[:]...)
+	payload := append(msgpackBytes, nonceBytes[:]...)
+	if vault == "" {
+		payload = append(payload, 0x00)
+	} else {
+		require.True(t, common.IsHexAddress(vault))
+		payload = append(payload, 0x01)
+		payload = append(payload, common.HexToAddress(vault).Bytes()...)
+	}
+
 	connectionID := crypto.Keccak256(payload)
 
 	source := "a"
@@ -136,9 +142,6 @@ func computeReferenceDigest(t *testing.T, action Action, nonce int64, vault stri
 		source = "b"
 	}
 	chainID := int64(1337)
-	if !isMainnet {
-		chainID = 1338
-	}
 
 	typedData := apitypes.TypedData{
 		Types: apitypes.Types{
