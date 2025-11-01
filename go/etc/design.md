@@ -9,8 +9,8 @@
 ### 目录规划
 - `etc/nof0.yaml`：HTTP 服务主配置（内含 `rest.RestConf`、数据库、缓存、数据目录等）。
 - `etc/llm.yaml`：LLM Provider 配置（保留 `pkg/llm` 已实现的加载流程）。
-- `etc/executor.yaml`：执行器运行参数（风险阈值、模型选择、策略开关等，待新增）。
-- `etc/manager.yaml`：虚拟交易员与资源编排配置（Trader 列表、交易所账号、监控配置等，待新增）。
+ - `etc/executor.yaml`：执行器运行参数（风险阈值、并发/超时、白名单/签名等）。模型与 Prompt 由 Trader/调用方注入。
+ - `etc/manager.yaml`：虚拟交易员与资源编排配置（Trader 列表、监控配置等）。仅通过 `exchange_provider` / `market_provider` 引用 Provider ID，不再内联交易所凭证。
 - `etc/prompts/`：Prompt 模板仓库（按模块划分子目录，如 `executor/`、`manager/`），与配置文件同目录发布以便统一变更。
 - `etc/exchange.yaml`：交易所 Provider 统一配置（访问凭证、Host、重试与限流策略，后续需要与 `pkg/exchange` 实现对齐）。
 - `etc/market.yaml`：行情数据 Provider 配置（数据源、刷新频率、缓存 TTL、Mock 选项等，需与 `pkg/market` 约定加载）。
@@ -58,21 +58,16 @@
 - 日志等级、重试次数等字段继续支持环境变量覆盖，保证与 `llm.yaml` 中的默认值一致。
 
 ### Executor 模块
-- 按照 `pkg/executor/design.md` 中的 `ExecutorConfig` 结构实现配置文件解析，字段包括杠杆、最小信心度、风险报酬比等。
-- 配置文件需支持：
-  - LLM 模型别名及 Prompt 模板路径。
-  - 决策节流参数（最小决策间隔、最大并发调用数）。
-  - 与 Manager 交互的安全策略（允许的 Trader ID 列表、签名密钥等）。
-- 提供 `LoadConfig(path string) (*Config, error)` 与 `Validate()`，并在 `config.MustLoad` 中调用。
-- 预留 `Overrides` 字段用于针对特定 Trader 或市场的定制（例如 BTC/ETH 专属杠杆）。
+ - `ExecutorConfig` 仅包含执行参数：杠杆、最小信心度、风险报酬比、节流（决策间隔、并发/超时）、安全（允许的 Trader ID、签名密钥）。
+ - 模型选择与 Prompt 模板路径不再出现在 `executor.yaml`，改由 Trader/调用方传入并在执行期注入。
+ - 提供 `LoadConfig/Validate`；支持 `Overrides` 覆盖（按 Trader/符号）。
 
 ### Manager 模块
-- 依据设计文档实现 `pkg/manager/config.go`，完整支持 `ManagerConfig`、`TraderConfig`、`ExchangeConfig`、`MonitoringConfig` 等结构。
-- 在加载阶段校验：
-  - Trader `allocation_pct` 总和 ≤ 100%，并允许保留 `reserve_equity_pct`。
-  - Prompt 模板、热路径文件存在。
-  - Trader 通过 `exchange_provider` / `market_provider` 字段引用统一的 Provider ID，校验需确保对应 ID 在 `exchange.Config` / `market.Config` 中存在。
-  - Exchange 配置中敏感信息必须由环境变量提供。
+ - 依据实现，`pkg/manager/config.go` 现仅包含 `ManagerConfig`、`TraderConfig`、`MonitoringConfig`；删除旧的内联 `ExchangeConfig`。
+ - 加载阶段校验：
+   - Trader `allocation_pct` 总和 ≤ 100%，允许 `reserve_equity_pct`。
+   - Prompt 模板文件存在。
+   - `exchange_provider` 与 `market_provider` 为必填；Provider ID 的有效性在运行期由 `svc.ServiceContext` 根据 `etc/exchange.yaml` / `etc/market.yaml` 解析并校验。
 - 对 Trader 列表支持按文件拆分：当 `TraderConfig` 设置 `config_file` 时，允许从外部文件读取并合并。
 - 为后续热加载预留 `Watcher` 接口（比如 `type WatchCallback func(*Config)`），与主配置保持一致。
 
@@ -94,8 +89,8 @@
 - 现阶段 Market Provider 多通过代码常量初始化，缺少配置驱动能力，需在实现中补齐对上述字段的消费路径。
 
 ### Exchange / Market / 其他外部依赖
-- 在 Manager 配置中集中维护交易所凭证，避免散落在代码或环境变量中。
-- 可选地为 `pkg/market` 定义 `MarketSection`，管理数据源刷新频率、缓存策略等。
+ - 交易所凭证与市场数据源统一维护在 `etc/exchange.yaml` / `etc/market.yaml`；Manager 仅引用 Provider ID。
+ - `internal/config` 已包含 `ExchangeSection` / `MarketSection`，`svc.ServiceContext` 负责初始化并向 Trader 注入 Provider 实例。
 - 为测试环境提供 `mock` 类型配置，加载后自动切换到模拟实现。
 
 ### 安全与合规
@@ -104,22 +99,18 @@
 - 建议新增 `etc/secrets.example`，列出需要提前导出的环境变量，配合 `.env` 或 CI/CD Secret 管理。
 
 ### 测试与验证
-- 每个模块的配置包至少包含一个 table-driven 单元测试，覆盖：
+ - 每个模块的配置包至少包含一个 table-driven 单元测试，覆盖：
   - 正常加载流程。
   - 缺失必填字段、非法枚举、超出范围的失败路径。
   - 环境变量覆盖与 `${VAR}` 展开。
-- 在集成测试中增加「配置冒烟检查」：调用 `config.MustLoad` 并验证关键字段非空，作为 CI 的快速失败点。
+ - 新增集成冒烟测试：调用 `config.Load(etc/nof0.yaml)`，验证 `exchange/market` 可构建 Provider，`ServiceContext` 能正确解析 Trader -> Provider 映射。
 
-## TODO 列表
-- [ ] `internal/config`: 实现 `MustLoad`，封装 go-zero `conf.MustLoad` 与环境变量加载逻辑。
-- [ ] `internal/config`: 扩展 `Config` 结构体，引入 `LLMSection`、`ExecutorSection`、`ManagerSection` 及校验方法。
-- [ ] `etc/nof0.yaml`: 新增模块配置入口（路径或内嵌结构），并同步更新示例默认值。
-- [ ] `etc/manager.yaml` / `etc/executor.yaml`: 草拟初版模板，确保字段与设计文档一一对应。
-- [ ] `pkg/manager/config.go`: 实现配置结构、加载、验证、拆分 Trader 子配置的逻辑与单元测试。
-- [ ] `pkg/executor/config.go`: 完成执行器配置解析、验证、覆盖优先级等实现与测试。
-- [ ] `pkg/llm`: 补充从主配置注入的构造逻辑，并校验环境变量覆盖顺序。
-- [ ] `svc.NewServiceContext`: 按新的配置结构初始化 LLM 客户端、Manager、Executor，确保依赖注入一致。
-- [ ] `docs`: 在 README 或开发文档中补充配置使用说明及环境变量清单。
-- [ ] `pkg/exchange`: 设计统一的配置结构/加载函数，并在 `internal/config` 中增加 `ExchangeSection` 与 ServiceContext 注入逻辑。
-- [ ] `pkg/market`: 定义配置模型与加载流程，提供默认模板 `etc/market.yaml` 并在 ServiceContext 中注入 Provider。
-- [ ] `etc/exchange.yaml` / `etc/market.yaml`: 提供示例配置（含必填字段、环境变量占位），确保与代码实现一致。
+## TODO 列表（已更新）
+ - [x] `internal/config`: `MustLoad/Load` + 模块化 Section 加载与校验。
+ - [x] `etc/nof0.yaml`: 引用各模块配置文件。
+ - [x] `pkg/manager/config.go`: 去除内联 `exchanges`，强制 `exchange_provider`/`market_provider`。
+ - [x] `pkg/executor/config.go`: 去除模型/Prompt；仅保留执行参数与安全字段。
+ - [x] `pkg/exchange` / `pkg/market`: 统一配置与 Provider 构建。
+ - [x] `svc.NewServiceContext`: 基于 Provider ID 注入 Trader 依赖（严格校验）。
+ - [x] 冒烟测试：验证 Provider 构建与 Trader 映射。
+ - [ ] 文档：在 README/用例中补充新的配置示例与环境变量清单。

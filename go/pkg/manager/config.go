@@ -15,10 +15,9 @@ import (
 
 // Config defines the overall manager configuration schema.
 type Config struct {
-	Manager    ManagerConfig             `yaml:"manager"`
-	Traders    []TraderConfig            `yaml:"traders"`
-	Exchanges  map[string]ExchangeConfig `yaml:"exchanges"`
-	Monitoring MonitoringConfig          `yaml:"monitoring"`
+	Manager    ManagerConfig    `yaml:"manager"`
+	Traders    []TraderConfig   `yaml:"traders"`
+	Monitoring MonitoringConfig `yaml:"monitoring"`
 
 	baseDir string
 }
@@ -37,7 +36,6 @@ type ManagerConfig struct {
 type TraderConfig struct {
 	ID               string         `yaml:"id"`
 	Name             string         `yaml:"name"`
-	Exchange         string         `yaml:"exchange"` // deprecated; prefer ExchangeProvider
 	ExchangeProvider string         `yaml:"exchange_provider"`
 	MarketProvider   string         `yaml:"market_provider"`
 	PromptTemplate   string         `yaml:"prompt_template"`
@@ -59,17 +57,6 @@ type RiskParameters struct {
 	MinConfidence      int     `yaml:"min_confidence"`
 	StopLossEnabled    bool    `yaml:"stop_loss_enabled"`
 	TakeProfitEnabled  bool    `yaml:"take_profit_enabled"`
-}
-
-type ExchangeConfig struct {
-	Type       string        `yaml:"type"`
-	APIKey     string        `yaml:"api_key"`
-	Secret     string        `yaml:"api_secret"`
-	Passphrase string        `yaml:"passphrase"`
-	Testnet    bool          `yaml:"testnet"`
-	Timeout    time.Duration `yaml:"-"`
-
-	TimeoutRaw string `yaml:"timeout"`
 }
 
 type MonitoringConfig struct {
@@ -123,18 +110,9 @@ func (c *Config) applyDefaults() {
 		if strings.TrimSpace(c.Traders[i].DecisionIntervalRaw) == "" {
 			c.Traders[i].DecisionIntervalRaw = "3m"
 		}
-		if strings.TrimSpace(c.Traders[i].ExchangeProvider) == "" && strings.TrimSpace(c.Traders[i].Exchange) != "" {
-			c.Traders[i].ExchangeProvider = strings.TrimSpace(c.Traders[i].Exchange)
-		}
 	}
 	if strings.TrimSpace(c.Monitoring.UpdateIntervalRaw) == "" {
 		c.Monitoring.UpdateIntervalRaw = "30s"
-	}
-	for key, ex := range c.Exchanges {
-		if strings.TrimSpace(ex.TimeoutRaw) == "" {
-			ex.TimeoutRaw = "30s"
-			c.Exchanges[key] = ex
-		}
 	}
 }
 
@@ -155,14 +133,6 @@ func (c *Config) parseDurations() error {
 	if err != nil {
 		return err
 	}
-	for key, ex := range c.Exchanges {
-		d, err := parsePositiveDuration(fmt.Sprintf("exchanges.%s.timeout", key), ex.TimeoutRaw)
-		if err != nil {
-			return err
-		}
-		ex.Timeout = d
-		c.Exchanges[key] = ex
-	}
 	return nil
 }
 
@@ -173,15 +143,9 @@ func (c *Config) expandFields() {
 	for i := range c.Traders {
 		c.Traders[i].ID = strings.TrimSpace(c.Traders[i].ID)
 		c.Traders[i].Name = strings.TrimSpace(c.Traders[i].Name)
-		c.Traders[i].Exchange = strings.TrimSpace(c.Traders[i].Exchange)
+		c.Traders[i].ExchangeProvider = strings.TrimSpace(c.Traders[i].ExchangeProvider)
+		c.Traders[i].MarketProvider = strings.TrimSpace(c.Traders[i].MarketProvider)
 		c.Traders[i].PromptTemplate = c.resolvePath(c.Traders[i].PromptTemplate)
-	}
-	for key, ex := range c.Exchanges {
-		ex.Type = strings.TrimSpace(ex.Type)
-		ex.APIKey = strings.TrimSpace(os.ExpandEnv(ex.APIKey))
-		ex.Secret = strings.TrimSpace(os.ExpandEnv(ex.Secret))
-		ex.Passphrase = strings.TrimSpace(os.ExpandEnv(ex.Passphrase))
-		c.Exchanges[key] = ex
 	}
 	c.Monitoring.AlertWebhook = strings.TrimSpace(os.ExpandEnv(c.Monitoring.AlertWebhook))
 	c.Monitoring.MetricsExporter = strings.TrimSpace(c.Monitoring.MetricsExporter)
@@ -229,8 +193,8 @@ func (c *Config) Validate() error {
 		if strings.TrimSpace(trader.ExchangeProvider) == "" {
 			return fmt.Errorf("manager config: traders[%d].exchange_provider is required", i)
 		}
-		if _, ok := c.Exchanges[trader.ExchangeProvider]; !ok {
-			return fmt.Errorf("manager config: traders[%d] references undefined exchange provider %q", i, trader.ExchangeProvider)
+		if strings.TrimSpace(trader.MarketProvider) == "" {
+			return fmt.Errorf("manager config: traders[%d].market_provider is required", i)
 		}
 		if trader.PromptTemplate == "" {
 			return fmt.Errorf("manager config: traders[%d].prompt_template is required", i)
@@ -251,15 +215,6 @@ func (c *Config) Validate() error {
 	}
 	if totalAllocation > 100-c.Manager.ReserveEquityPct+1e-6 {
 		return fmt.Errorf("manager config: trader allocation %.2f exceeds available equity after reserve %.2f", totalAllocation, c.Manager.ReserveEquityPct)
-	}
-
-	if len(c.Exchanges) == 0 {
-		return errors.New("manager config: exchanges section cannot be empty")
-	}
-	for key, ex := range c.Exchanges {
-		if ex.Type == "" {
-			return fmt.Errorf("manager config: exchanges.%s.type is required", key)
-		}
 	}
 
 	if c.Monitoring.MetricsExporter == "" {

@@ -17,7 +17,8 @@ func TestManagerPromptRenderer(t *testing.T) {
 	trader := &TraderConfig{
 		ID:               "trader_aggressive_short",
 		Name:             "Aggressive Short",
-		Exchange:         "hyperliquid",
+		ExchangeProvider: "hyperliquid",
+		MarketProvider:   "hl_market",
 		PromptTemplate:   templatePath,
 		DecisionInterval: 3 * time.Minute,
 		AllocationPct:    40,

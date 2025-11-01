@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -14,8 +13,6 @@ import (
 
 // Config controls runtime behaviour for the executor module.
 type Config struct {
-	ModelAlias             string              `yaml:"model_alias"`
-	PromptTemplate         string              `yaml:"prompt_template"`
 	BTCETHLeverage         int                 `yaml:"btc_eth_leverage"`
 	AltcoinLeverage        int                 `yaml:"altcoin_leverage"`
 	MinConfidence          int                 `yaml:"min_confidence"`
@@ -30,7 +27,6 @@ type Config struct {
 
 	DecisionIntervalRaw string `yaml:"decision_interval"`
 	DecisionTimeoutRaw  string `yaml:"decision_timeout"`
-	baseDir             string
 	minRiskRewardSet    bool
 }
 
@@ -50,11 +46,11 @@ func LoadConfig(path string) (*Config, error) {
 		return nil, fmt.Errorf("open executor config: %w", err)
 	}
 	defer file.Close()
-	return LoadConfigFromReader(file, filepath.Dir(path))
+	return LoadConfigFromReader(file)
 }
 
-// LoadConfigFromReader constructs a Config from a reader with the provided base directory.
-func LoadConfigFromReader(r io.Reader, baseDir string) (*Config, error) {
+// LoadConfigFromReader constructs a Config from a reader.
+func LoadConfigFromReader(r io.Reader) (*Config, error) {
 	data, err := io.ReadAll(r)
 	if err != nil {
 		return nil, fmt.Errorf("read executor config: %w", err)
@@ -70,7 +66,6 @@ func LoadConfigFromReader(r io.Reader, baseDir string) (*Config, error) {
 			cfg.minRiskRewardSet = true
 		}
 	}
-	cfg.baseDir = baseDir
 	cfg.applyDefaults()
 	if err := cfg.parseDurations(); err != nil {
 		return nil, err
@@ -118,32 +113,14 @@ func (c *Config) parseDurations() error {
 }
 
 func (c *Config) expandFields() {
-	c.PromptTemplate = c.resolvePath(c.PromptTemplate)
 	c.SigningKey = strings.TrimSpace(os.ExpandEnv(c.SigningKey))
 	for i, id := range c.AllowedTraderIDs {
 		c.AllowedTraderIDs[i] = strings.TrimSpace(id)
 	}
 }
 
-func (c *Config) resolvePath(path string) string {
-	path = strings.TrimSpace(os.ExpandEnv(path))
-	if path == "" || filepath.IsAbs(path) {
-		return path
-	}
-	return filepath.Join(c.baseDir, path)
-}
-
 // Validate ensures configuration sanity.
 func (c *Config) Validate() error {
-	if strings.TrimSpace(c.ModelAlias) == "" {
-		return errors.New("executor config: model_alias is required")
-	}
-	if strings.TrimSpace(c.PromptTemplate) == "" {
-		return errors.New("executor config: prompt_template is required")
-	}
-	if _, err := os.Stat(c.PromptTemplate); err != nil {
-		return fmt.Errorf("executor config: prompt_template %q not accessible: %w", c.PromptTemplate, err)
-	}
 	if c.BTCETHLeverage <= 0 {
 		return errors.New("executor config: btc_eth_leverage must be positive")
 	}

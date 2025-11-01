@@ -2,6 +2,7 @@ package executor
 
 import (
 	"fmt"
+	"strings"
 
 	"nof0-api/pkg/prompt"
 )
@@ -25,12 +26,16 @@ type PromptRenderer struct {
 	tpl *prompt.Template
 }
 
-// NewPromptRenderer constructs a renderer using the template path defined in cfg.
-func NewPromptRenderer(cfg *Config) (*PromptRenderer, error) {
+// NewPromptRenderer constructs a renderer using the supplied template path.
+func NewPromptRenderer(cfg *Config, templatePath string) (*PromptRenderer, error) {
 	if cfg == nil {
 		return nil, fmt.Errorf("executor prompt renderer requires config")
 	}
-	tpl, err := prompt.NewTemplate(cfg.PromptTemplate, nil)
+	path := strings.TrimSpace(templatePath)
+	if path == "" {
+		return nil, fmt.Errorf("executor prompt renderer requires template path")
+	}
+	tpl, err := prompt.NewTemplate(path, nil)
 	if err != nil {
 		return nil, err
 	}

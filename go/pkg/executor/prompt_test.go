@@ -9,8 +9,6 @@ import (
 func TestPromptRenderer(t *testing.T) {
 	templatePath := filepath.Join("..", "..", "etc", "prompts", "executor", "default_prompt.tmpl")
 	cfg := &Config{
-		ModelAlias:             "gpt-5",
-		PromptTemplate:         templatePath,
 		BTCETHLeverage:         20,
 		AltcoinLeverage:        8,
 		MinConfidence:          75,
@@ -20,7 +18,7 @@ func TestPromptRenderer(t *testing.T) {
 		DecisionTimeoutRaw:     "60s",
 		MaxConcurrentDecisions: 1,
 	}
-	renderer, err := NewPromptRenderer(cfg)
+	renderer, err := NewPromptRenderer(cfg, templatePath)
 	if err != nil {
 		t.Fatalf("NewPromptRenderer error: %v", err)
 	}
@@ -60,7 +58,23 @@ func TestPromptRenderer(t *testing.T) {
 }
 
 func TestPromptRendererNilConfig(t *testing.T) {
-	if _, err := NewPromptRenderer(nil); err == nil {
+	if _, err := NewPromptRenderer(nil, ""); err == nil {
 		t.Fatal("expected error for nil config")
+	}
+}
+
+func TestPromptRendererEmptyPath(t *testing.T) {
+	cfg := &Config{
+		BTCETHLeverage:         20,
+		AltcoinLeverage:        8,
+		MinConfidence:          75,
+		MinRiskReward:          3.2,
+		MaxPositions:           3,
+		DecisionIntervalRaw:    "3m",
+		DecisionTimeoutRaw:     "60s",
+		MaxConcurrentDecisions: 1,
+	}
+	if _, err := NewPromptRenderer(cfg, " "); err == nil {
+		t.Fatal("expected error for empty template path")
 	}
 }

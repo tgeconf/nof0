@@ -1,5 +1,3 @@
-model_alias: gpt-5
-prompt_template: prompts/executor/default_prompt.tmpl
 btc_eth_leverage: 20
 altcoin_leverage: 10
 min_confidence: 75

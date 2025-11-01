@@ -21,8 +21,6 @@ type ServiceContext struct {
 	DataLoader *data.DataLoader
 
 	ExecutorConfig         *executorpkg.Config
-	ExecutorPrompt         *executorpkg.PromptRenderer
-	ExecutorPromptDigest   string
 	ManagerConfig          *managerpkg.Config
 	ManagerPromptRenderers map[string]*managerpkg.PromptRenderer
 	ManagerPromptDigests   map[string]string
@@ -57,13 +55,7 @@ func NewServiceContext(c config.Config) *ServiceContext {
 	}
 
 	if cfg := c.Executor.Config; cfg != nil {
-		renderer, err := executorpkg.NewPromptRenderer(cfg)
-		if err != nil {
-			log.Fatalf("failed to init executor prompt renderer: %v", err)
-		}
 		svc.ExecutorConfig = cfg
-		svc.ExecutorPrompt = renderer
-		svc.ExecutorPromptDigest = renderer.Digest()
 	}
 
 	if cfg := c.Manager.Config; cfg != nil {
@@ -112,50 +104,19 @@ func NewServiceContext(c config.Config) *ServiceContext {
 		svc.ManagerTraderMarket = make(map[string]marketpkg.Provider, len(svc.ManagerConfig.Traders))
 		for i := range svc.ManagerConfig.Traders {
 			trader := &svc.ManagerConfig.Traders[i]
-			if trader.ExchangeProvider != "" {
-				provider, ok := svc.ExchangeProviders[trader.ExchangeProvider]
-				if !ok {
-					log.Fatalf("manager trader %s references unknown exchange provider %s", trader.ID, trader.ExchangeProvider)
-				}
-				svc.ManagerTraderExchange[trader.ID] = provider
-			} else if svc.DefaultExchange != nil {
-				svc.ManagerTraderExchange[trader.ID] = svc.DefaultExchange
-			} else {
-				log.Fatalf("manager trader %s has no exchange provider and no default configured", trader.ID)
+			// Strict mapping: manager config requires explicit provider IDs
+			exProvider, ok := svc.ExchangeProviders[trader.ExchangeProvider]
+			if !ok {
+				log.Fatalf("manager trader %s references unknown exchange provider %s", trader.ID, trader.ExchangeProvider)
 			}
+			svc.ManagerTraderExchange[trader.ID] = exProvider
 
-			marketProviderID := trader.MarketProvider
-			if marketProviderID == "" && svc.MarketConfig != nil {
-				marketProviderID = svc.MarketConfig.Default
+			mktProvider, ok := svc.MarketProviders[trader.MarketProvider]
+			if !ok {
+				log.Fatalf("manager trader %s references unknown market provider %s", trader.ID, trader.MarketProvider)
 			}
-			if marketProviderID != "" {
-				provider, ok := svc.MarketProviders[marketProviderID]
-				if !ok {
-					log.Fatalf("manager trader %s references unknown market provider %s", trader.ID, marketProviderID)
-				}
-				svc.ManagerTraderMarket[trader.ID] = provider
-			} else if svc.DefaultMarket != nil {
-				svc.ManagerTraderMarket[trader.ID] = svc.DefaultMarket
-			}
+			svc.ManagerTraderMarket[trader.ID] = mktProvider
 		}
-	}
-
-	if cfg := c.Exchange.Config; cfg != nil {
-		providers, err := cfg.BuildProviders()
-		if err != nil {
-			log.Fatalf("failed to init exchange providers: %v", err)
-		}
-		svc.ExchangeConfig = cfg
-		svc.ExchangeProviders = providers
-	}
-
-	if cfg := c.Market.Config; cfg != nil {
-		providers, err := cfg.BuildProviders()
-		if err != nil {
-			log.Fatalf("failed to init market providers: %v", err)
-		}
-		svc.MarketConfig = cfg
-		svc.MarketProviders = providers
 	}
 
 	// Only inject DB models when DSN provided; business logic still uses DataLoader.
