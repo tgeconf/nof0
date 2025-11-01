@@ -27,8 +27,7 @@
    - ✅ 测试总结:`TESTING_SUMMARY.md`
 
 5. **自动化脚本** - 全部可用
-   - ✅ 单元测试运行器:`scripts/run-tests.sh`
-   - ✅ 集成测试运行器:`scripts/run-integration-tests.sh`
+   - ✅ 统一测试运行器:`scripts/run_tests.py` (支持 unit/integration/all)
 
 ## 测试覆盖详情
 
@@ -73,14 +72,14 @@ BenchmarkCryptoPrices-10              16717    69962 ns/op     2064 B/op      35
 
 ```bash
 cd go
-./scripts/run-tests.sh
+python scripts/run_tests.py unit
 ```
 
 ### 运行集成测试
 
 ```bash
 cd go
-./scripts/run-integration-tests.sh
+python scripts/run_tests.py integration
 ```
 
 ### 运行特定测试

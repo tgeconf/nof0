@@ -14,8 +14,7 @@ go/
 │   └── logic/
 │       └── cryptopriceslogic_test.go  # Logic layer unit tests
 └── scripts/
-    ├── run-tests.sh            # Main test runner
-    └── run-integration-tests.sh # Integration test runner
+    ├── run_tests.py          # 统一测试运行器 (unit/integration/all)
 ```
 
 ## Test Types
@@ -83,7 +82,7 @@ pkill nof0-api
 
 Or use the helper script:
 ```bash
-./scripts/run-integration-tests.sh
+python scripts/run_tests.py integration
 ```
 
 ### 3. Benchmark Tests
@@ -103,17 +102,17 @@ go test ./internal/logic/... -bench=. -benchmem
 ### Quick Test (All Unit Tests)
 
 ```bash
-./scripts/run-tests.sh
+python scripts/run_tests.py unit
 ```
 
 ### Comprehensive Test Suite
 
 ```bash
 # 1. Unit tests
-go test ./internal/... -v
+python scripts/run_tests.py unit
 
 # 2. Integration tests (requires running server)
-./scripts/run-integration-tests.sh
+python scripts/run_tests.py integration
 
 # 3. Coverage report
 go test ./internal/... -coverprofile=coverage.out

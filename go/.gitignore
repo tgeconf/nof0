@@ -72,6 +72,10 @@ block.prof
 .LSOverride
 ._*
 
+# uv virtual environments
+.venv/
+uv.lock
+
 # OS - Windows
 Thumbs.db
 ehthumbs.db

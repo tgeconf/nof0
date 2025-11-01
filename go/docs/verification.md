@@ -112,9 +112,9 @@ Note: There are two Hyperliquid stacks (market vs exchange). Keep the split: mar
 - Env
   - Export `ZENMUX_API_KEY`, `HYPERLIQUID_PRIVATE_KEY`.
 - Build & Unit
-  - `scripts/run-tests.sh` (race, coverage, benchmarks summary).
+  - `python scripts/run_tests.py unit` (race, coverage, benchmarks summary).
 - Integration
-  - `scripts/run-integration-tests.sh` (build, boot, probe endpoints).
+  - `python scripts/run_tests.py integration` (build, boot, probe endpoints).
 - Manual
   - `go build -o nof0-api ./nof0.go && ./nof0-api -f etc/nof0.yaml`
   - Probe: `/api/crypto-prices`, `/api/leaderboard`, `/api/trades`.

@@ -268,10 +268,13 @@ go run cmd/importer/main.go -dsn "postgres://nof0:nof0@localhost:5432/nof0?sslmo
 
 ```bash
 # 运行所有单元测试
-./scripts/run-tests.sh
+python scripts/run_tests.py unit
 
 # 运行集成测试
-./scripts/run-integration-tests.sh
+python scripts/run_tests.py integration
+
+# 运行所有测试（单元 + 集成）
+python scripts/run_tests.py all
 
 # 查看覆盖率
 go test -cover ./internal/data/
@@ -312,8 +315,7 @@ go/
 ├── migrations/               # 数据库迁移脚本
 ├── test/                     # 集成测试套件
 └── scripts/                  # 自动化脚本
-    ├── run-tests.sh          # 单元测试
-    └── run-integration-tests.sh
+    └── run_tests.py          # 统一测试运行器 (unit/integration/all)
 ```
 
 ---
