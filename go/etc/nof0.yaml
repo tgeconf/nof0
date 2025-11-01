@@ -21,6 +21,9 @@ TTL:
   Medium: 60    # seconds for lists (e.g., trades)
   Long: 300     # seconds for large aggregations
 
+LLM:
+  File: llm.yaml
+
 # CORS settings
 Cors:
   AllowOrigins: ['*']
