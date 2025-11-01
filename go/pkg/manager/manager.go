@@ -2,8 +2,6 @@ package manager
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -597,8 +595,7 @@ func (m *Manager) writeJournalRecord(t *VirtualTrader, ectx *executorpkg.Context
 	if out != nil {
 		cot = out.CoTTrace
 		if s := strings.TrimSpace(out.UserPrompt); s != "" {
-			sum := sha256.Sum256([]byte(s))
-			promptDigest = hex.EncodeToString(sum[:])
+			promptDigest = llm.DigestString(s)
 		}
 	}
 	// candidates list as strings for compactness

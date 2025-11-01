@@ -3,7 +3,7 @@ package manager
 import (
 	"fmt"
 
-	"nof0-api/pkg/prompt"
+	"nof0-api/pkg/llm"
 )
 
 // ManagerPromptInputs encapsulates the data required to render a manager prompt.
@@ -14,12 +14,12 @@ type ManagerPromptInputs struct {
 
 // PromptRenderer renders manager prompt templates for a specific trader.
 type PromptRenderer struct {
-	template *prompt.Template
+	template *llm.PromptTemplate
 }
 
 // NewPromptRenderer parses the template at the provided path.
 func NewPromptRenderer(path string) (*PromptRenderer, error) {
-	tpl, err := prompt.NewTemplate(path, nil)
+	tpl, err := llm.NewPromptTemplate(path, nil)
 	if err != nil {
 		return nil, err
 	}

@@ -1,4 +1,4 @@
-package prompt
+package llm
 
 import (
 	"os"
@@ -10,7 +10,7 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestTemplateRender(t *testing.T) {
+func TestPromptTemplateRender(t *testing.T) {
 	dir := t.TempDir()
 	templatePath := filepath.Join(dir, "example.tmpl")
 	err := os.WriteFile(templatePath, []byte("hello {{ .Name }} - {{ toUpper .Role }}"), 0o600)
@@ -19,8 +19,8 @@ func TestTemplateRender(t *testing.T) {
 	funcs := template.FuncMap{
 		"toUpper": strings.ToUpper,
 	}
-	tpl, err := NewTemplate(templatePath, funcs)
-	assert.NoError(t, err, "NewTemplate should not error")
+	tpl, err := NewPromptTemplate(templatePath, funcs)
+	assert.NoError(t, err, "NewPromptTemplate should not error")
 	assert.NotNil(t, tpl, "template should not be nil")
 
 	out, err := tpl.Render(map[string]any{"Name": "Alice", "Role": "trader"})
@@ -28,14 +28,14 @@ func TestTemplateRender(t *testing.T) {
 	assert.Equal(t, "hello Alice - TRADER", out, "rendered output should match expected")
 }
 
-func TestTemplateReload(t *testing.T) {
+func TestPromptTemplateReload(t *testing.T) {
 	dir := t.TempDir()
 	templatePath := filepath.Join(dir, "reload.tmpl")
 	err := os.WriteFile(templatePath, []byte("v1"), 0o600)
 	assert.NoError(t, err, "write template should succeed")
 
-	tpl, err := NewTemplate(templatePath, nil)
-	assert.NoError(t, err, "NewTemplate should not error")
+	tpl, err := NewPromptTemplate(templatePath, nil)
+	assert.NoError(t, err, "NewPromptTemplate should not error")
 	assert.NotNil(t, tpl, "template should not be nil")
 
 	out, err := tpl.Render(nil)

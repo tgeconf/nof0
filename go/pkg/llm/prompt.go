@@ -1,16 +1,19 @@
-package prompt
+package llm
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"text/template"
 )
 
-// Template wraps a text/template loaded from disk with optional function map.
-type Template struct {
+// PromptTemplate wraps a text/template loaded from disk with optional function map.
+type PromptTemplate struct {
 	path  string
 	funcs template.FuncMap
 
@@ -19,12 +22,12 @@ type Template struct {
 	hash string
 }
 
-// NewTemplate parses the template at path using the provided template functions.
-func NewTemplate(path string, funcs template.FuncMap) (*Template, error) {
-	if path == "" {
+// NewPromptTemplate parses the template at path using the provided template functions.
+func NewPromptTemplate(path string, funcs template.FuncMap) (*PromptTemplate, error) {
+	if strings.TrimSpace(path) == "" {
 		return nil, fmt.Errorf("prompt template path is empty")
 	}
-	t := &Template{
+	t := &PromptTemplate{
 		path:  path,
 		funcs: funcs,
 	}
@@ -35,7 +38,7 @@ func NewTemplate(path string, funcs template.FuncMap) (*Template, error) {
 }
 
 // Render executes the template with the provided data and returns the rendered string.
-func (t *Template) Render(data any) (string, error) {
+func (t *PromptTemplate) Render(data any) (string, error) {
 	t.mu.RLock()
 	defer t.mu.RUnlock()
 
@@ -51,13 +54,13 @@ func (t *Template) Render(data any) (string, error) {
 }
 
 // Reload reparses the underlying template from disk. This can be used when files change.
-func (t *Template) Reload() error {
+func (t *PromptTemplate) Reload() error {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	return t.reload()
 }
 
-func (t *Template) reload() error {
+func (t *PromptTemplate) reload() error {
 	data, err := os.ReadFile(t.path)
 	if err != nil {
 		return fmt.Errorf("read prompt template %q: %w", t.path, err)
@@ -77,8 +80,18 @@ func (t *Template) reload() error {
 }
 
 // Digest returns the sha256 hash of the template content.
-func (t *Template) Digest() string {
+func (t *PromptTemplate) Digest() string {
 	t.mu.RLock()
 	defer t.mu.RUnlock()
 	return t.hash
+}
+
+// DigestString returns the sha256 digest for the provided string.
+func DigestString(s string) string {
+	return computeDigest([]byte(s))
+}
+
+func computeDigest(data []byte) string {
+	sum := sha256.Sum256(data)
+	return hex.EncodeToString(sum[:])
 }

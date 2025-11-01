@@ -2,9 +2,8 @@ package executor
 
 import (
 	"fmt"
-	"strings"
 
-	"nof0-api/pkg/prompt"
+	"nof0-api/pkg/llm"
 )
 
 // PromptInputs contains dynamic data injected into the executor prompt template.
@@ -23,7 +22,7 @@ type PromptInputs struct {
 // PromptRenderer renders the executor system prompt from a template file.
 type PromptRenderer struct {
 	cfg *Config
-	tpl *prompt.Template
+	tpl *llm.PromptTemplate
 }
 
 // NewPromptRenderer constructs a renderer using the supplied template path.
@@ -31,11 +30,7 @@ func NewPromptRenderer(cfg *Config, templatePath string) (*PromptRenderer, error
 	if cfg == nil {
 		return nil, fmt.Errorf("executor prompt renderer requires config")
 	}
-	path := strings.TrimSpace(templatePath)
-	if path == "" {
-		return nil, fmt.Errorf("executor prompt renderer requires template path")
-	}
-	tpl, err := prompt.NewTemplate(path, nil)
+	tpl, err := llm.NewPromptTemplate(templatePath, nil)
 	if err != nil {
 		return nil, err
 	}
