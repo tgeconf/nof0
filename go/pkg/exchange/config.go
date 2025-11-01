@@ -53,6 +53,26 @@ func lookupProviderBuilder(typeName string) (ProviderBuilder, bool) {
 	return builder, ok
 }
 
+// GetProvider constructs a single provider instance for the given type using
+// the provided configuration. This is a convenience for tests and callers that
+// want to instantiate a provider without building a full config map.
+func GetProvider(typeName string, cfg *ProviderConfig) (Provider, error) {
+    if cfg == nil {
+        cfg = &ProviderConfig{}
+    }
+    // Ensure the type is set and valid for validation.
+    cfgCopy := *cfg
+    cfgCopy.Type = typeName
+    if err := cfgCopy.validate("inline"); err != nil {
+        return nil, err
+    }
+    builder, ok := lookupProviderBuilder(cfgCopy.Type)
+    if !ok {
+        return nil, fmt.Errorf("exchange provider: unsupported type %q", cfgCopy.Type)
+    }
+    return builder("inline", &cfgCopy)
+}
+
 // LoadConfig reads configuration from disk.
 func LoadConfig(path string) (*Config, error) {
 	file, err := os.Open(path)
