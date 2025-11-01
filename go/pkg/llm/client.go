@@ -1,9 +1,12 @@
 package llm
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"reflect"
 	"strings"
@@ -31,6 +34,8 @@ type Client struct {
 	logger       Logger
 	retryHandler *RetryHandler
 	httpClient   *http.Client
+	// defaultRouting is applied when using zenmux/auto with no explicit Routing provided
+	defaultRouting *RoutingConfig
 }
 
 // ClientOption configures optional client behaviour.
@@ -122,13 +127,45 @@ func NewClient(cfg *Config, opts ...ClientOption) (*Client, error) {
 		oaClient = &clientVal
 	}
 
-	return &Client{
+	c := &Client{
 		config:       clientCfg,
 		openaiClient: oaClient,
 		logger:       logger,
 		retryHandler: retryHandler,
 		httpClient:   optState.httpClient,
-	}, nil
+	}
+
+	// If default model is zenmux/auto, prefer config-provided routing defaults,
+	// otherwise fall back to a built-in date-based list.
+	if strings.EqualFold(clientCfg.DefaultModel, "zenmux/auto") {
+		if clientCfg.RoutingDefaults != nil && len(clientCfg.RoutingDefaults.AvailableModels) > 0 {
+			c.defaultRouting = clientCfg.RoutingDefaults
+		} else {
+			cutoff := time.Date(2025, 12, 1, 0, 0, 0, 0, time.UTC)
+			if time.Now().UTC().Before(cutoff) {
+				c.defaultRouting = &RoutingConfig{
+					AvailableModels: []string{
+						"kuaishou/kat-coder-pro-v1",
+						"minimax/minimax-m2",
+					},
+					Preference: "balanced",
+				}
+			} else {
+				c.defaultRouting = &RoutingConfig{
+					AvailableModels: []string{
+						"openai/gpt-5-nano",
+						"google/gemini-2.5-flash-lite",
+						"x-ai/grok-4-fast",
+						"qwen/qwen3-235b-a22b-2507",
+						"deepseek/deepseek-chat-v3.1",
+					},
+					Preference: "balanced",
+				}
+			}
+		}
+	}
+
+	return c, nil
 }
 
 // Chat performs a single synchronous completion request.
@@ -139,6 +176,17 @@ func (c *Client) Chat(ctx context.Context, req *ChatRequest) (*ChatResponse, err
 	params, modelID, err := c.buildChatParams(req)
 	if err != nil {
 		return nil, err
+	}
+
+	// If using Zenmux auto-routing, fall back to raw JSON call to support
+	// `model_routing_config` which is not modeled in the OpenAI SDK types.
+	if strings.EqualFold(modelID, "zenmux/auto") || req.Routing != nil {
+		// Ensure routing provided
+		reqCopy := *req
+		if reqCopy.Routing == nil && c.defaultRouting != nil {
+			reqCopy.Routing = c.defaultRouting
+		}
+		return c.chatRaw(ctx, &reqCopy, modelID)
 	}
 
 	start := time.Now()
@@ -172,6 +220,122 @@ func (c *Client) Chat(ctx context.Context, req *ChatRequest) (*ChatResponse, err
 	})
 
 	return result, nil
+}
+
+// chatRaw posts a raw JSON body to support Zenmux auto-routing extensions.
+func (c *Client) chatRaw(ctx context.Context, req *ChatRequest, modelID string) (*ChatResponse, error) {
+	if c.httpClient == nil {
+		c.httpClient = &http.Client{Timeout: c.config.Timeout}
+	}
+	// Build messages payload preserving optional fields (name, tool_call_id)
+	msgs := make([]map[string]any, 0, len(req.Messages))
+	for _, m := range req.Messages {
+		role := strings.ToLower(strings.TrimSpace(m.Role))
+		if role == "" {
+			role = "user"
+		}
+		item := map[string]any{"role": role}
+		if m.Content != "" {
+			item["content"] = m.Content
+		}
+		switch role {
+		case "function":
+			if m.Name != "" {
+				item["name"] = m.Name
+			}
+		case "tool":
+			if m.ToolCallID != "" {
+				item["tool_call_id"] = m.ToolCallID
+			}
+		default:
+			if m.Name != "" {
+				item["name"] = m.Name
+			}
+		}
+		msgs = append(msgs, item)
+	}
+
+	body := map[string]any{
+		"model":    modelID,
+		"messages": msgs,
+	}
+	if req.Temperature != nil {
+		body["temperature"] = *req.Temperature
+	}
+	if req.MaxTokens != nil {
+		body["max_tokens"] = *req.MaxTokens
+	}
+	if req.TopP != nil {
+		body["top_p"] = *req.TopP
+	}
+	if req.Routing != nil {
+		body["model_routing_config"] = req.Routing
+	}
+	if rf := req.ResponseFormat; rf != nil {
+		t := strings.ToLower(strings.TrimSpace(rf.Type))
+		switch t {
+		case "json_schema":
+			rfBody := map[string]any{
+				"type": "json_schema",
+				"json_schema": map[string]any{
+					"name":   ifEmptyString(rf.Name, "schema"),
+					"schema": rf.Schema,
+				},
+			}
+			if rf.Strict != nil {
+				rfBody["json_schema"].(map[string]any)["strict"] = *rf.Strict
+			}
+			if rf.Description != "" {
+				rfBody["json_schema"].(map[string]any)["description"] = rf.Description
+			}
+			body["response_format"] = rfBody
+		case "json_object":
+			body["response_format"] = map[string]any{"type": "json_object"}
+		}
+	}
+
+	// POST to <base>/chat/completions with retry/backoff
+	url := strings.TrimRight(c.config.BaseURL, "/") + "/chat/completions"
+	data, _ := json.Marshal(body)
+
+	var completion *openai.ChatCompletion
+	if err := c.retryHandler.Do(ctx, func() error {
+		httpReq, _ := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(data))
+		httpReq.Header.Set("Authorization", "Bearer "+c.config.APIKey)
+		httpReq.Header.Set("Content-Type", "application/json")
+
+		resp, callErr := c.httpClient.Do(httpReq)
+		if callErr != nil {
+			return callErr
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+			// Wrap as openai.Error so retry policy recognizes retriable status codes
+			return &openai.Error{StatusCode: resp.StatusCode}
+		}
+		b, _ := io.ReadAll(resp.Body)
+		var parsed openai.ChatCompletion
+		if err := json.Unmarshal(b, &parsed); err != nil {
+			return fmt.Errorf("llm: decode completion: %w", err)
+		}
+		completion = &parsed
+		return nil
+	}); err != nil {
+		// Avoid leaking openai.Error with nil Request/Response, which can panic on Error()
+		var apiErr *openai.Error
+		if errors.As(err, &apiErr) {
+			return nil, fmt.Errorf("llm: http %d", apiErr.StatusCode)
+		}
+		return nil, err
+	}
+	return convertCompletion(completion), nil
+}
+
+func ifEmptyString(s, fallback string) string {
+	if strings.TrimSpace(s) == "" {
+		return fallback
+	}
+	return s
 }
 
 // ChatStream initiates a streaming completion call. The returned channel closes once the stream is exhausted.

@@ -9,6 +9,8 @@ type ChatRequest struct {
 	TopP           *float64        `json:"top_p,omitempty"`
 	Stream         bool            `json:"stream,omitempty"`
 	ResponseFormat *ResponseFormat `json:"response_format,omitempty"`
+	// Optional: Zenmux multi-model routing config; used when Model == "zenmux/auto"
+	Routing *RoutingConfig `json:"model_routing_config,omitempty"`
 }
 
 // Message represents a chat message in the conversation.
@@ -26,6 +28,12 @@ type ResponseFormat struct {
 	Name        string      `json:"name,omitempty"`
 	Description string      `json:"description,omitempty"`
 	Strict      *bool       `json:"strict,omitempty"`
+}
+
+// RoutingConfig describes Zenmux auto-routing preferences.
+type RoutingConfig struct {
+	AvailableModels []string `json:"available_models"`
+	Preference      string   `json:"preference,omitempty"`
 }
 
 // ChatResponse captures a non-streaming completion result.

@@ -22,11 +22,8 @@ cd "$(dirname "$0")/.."
 echo -e "${YELLOW}Running unit tests...${NC}"
 echo ""
 
-# Force low-cost/free LLM models during tests unless explicitly disabled
-export LLM_TEST_MODE=${LLM_TEST_MODE:-1}
-
 # Run all unit tests
-if go test ./internal/... -v; then
+if go test -tags=dotenv ./internal/... -v; then
     echo ""
     echo -e "${GREEN}✓ All unit tests passed!${NC}"
 else
@@ -40,14 +37,14 @@ echo -e "${YELLOW}Running benchmarks...${NC}"
 echo ""
 
 # Run benchmarks
-go test ./internal/... -bench=. -benchmem -run=^$ | grep -E "Benchmark|PASS"
+go test -tags=dotenv ./internal/... -bench=. -benchmem -run=^$ | grep -E "Benchmark|PASS"
 
 echo ""
 echo -e "${YELLOW}Generating coverage report...${NC}"
 echo ""
 
 # Generate coverage
-go test ./internal/... -coverprofile=coverage.out
+go test -tags=dotenv ./internal/... -coverprofile=coverage.out
 COVERAGE=$(go tool cover -func=coverage.out | grep total | awk '{print $3}')
 
 echo ""

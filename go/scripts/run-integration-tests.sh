@@ -78,13 +78,26 @@ trap cleanup EXIT INT TERM
 
 # Run integration tests
 echo ""
-echo -e "${YELLOW}Running integration tests...${NC}"
+echo -e "${YELLOW}Running LLM integration tests (dotenv+integration tags)...${NC}"
 echo ""
 
-if go test ./test/... -v; then
+EXIT_CODE=0
+
+if go test -tags='dotenv integration' ./pkg/llm -v -run Integration; then
+    echo -e "${GREEN}✓ LLM integration tests passed${NC}"
+else
+    echo -e "${RED}✗ LLM integration tests failed${NC}"
+    EXIT_CODE=1
+fi
+
+echo ""
+echo -e "${YELLOW}Running API integration tests...${NC}"
+echo ""
+
+if go test -tags='dotenv' ./test/... -v; then
     echo ""
     echo -e "${GREEN}✓ All integration tests passed!${NC}"
-    EXIT_CODE=0
+    :
 else
     echo ""
     echo -e "${RED}✗ Integration tests failed${NC}"

@@ -282,31 +282,23 @@ go test -cover ./internal/data/
 - 集成测试: 100% API端点
 - 详细文档: [TEST_README.md](TEST_README.md)
 
-### 测试时强制使用低成本 LLM
+### 系统环境与测试路由
 
-为避免单测期间使用昂贵模型，可开启测试模式强制选择低成本/免费模型（只影响 `pkg/llm` 默认模型选择，不改动业务逻辑）：
+`etc/nof0.yaml` 新增 `Env` 字段（test|dev|prod，默认 test）。当 `Env=test` 时：
+- LLM 默认模型切换为 `zenmux/auto`，并按日期或 `routing_defaults` 进行低成本/免费模型自动路由。
+- 你也可以在 `etc/llm.yaml` 的 `routing_defaults` 中控制候选与偏好：
 
-- 设置 `LLM_TEST_MODE=1` 后，按日期分段选择：
-  - 2025-12-01 之前：优先 `kuaishou/kat-coder-pro-v1`，其次 `minimax/minimax-m2`
-  - 2025-12-01 及之后：`openai/gpt-5-nano`、`google/gemini-2.5-flash-lite`、`x-ai/grok-4-fast`、`qwen/qwen3-235b-a22b-2507`、`deepseek/deepseek-chat-v3.1`
-
-可选覆盖：
-
-- `LLM_TEST_MODEL`：强制为单一模型（优先级最高）。
-- `LLM_TEST_MODEL_LIST`：逗号分隔的模型列表，取第一个。
-
-示例：
-
-```bash
-# 默认按日期优先级
-LLM_TEST_MODE=1 go test ./...
-
-# 指定单个模型
-LLM_TEST_MODE=1 LLM_TEST_MODEL=minimax/minimax-m2 go test ./...
-
-# 自定义优先级列表
-LLM_TEST_MODE=1 LLM_TEST_MODEL_LIST="openai/gpt-5-nano,deepseek/deepseek-chat-v3.1" go test ./...
+```yaml
+routing_defaults:
+  available_models:
+    - kuaishou/kat-coder-pro-v1
+    - minimax/minimax-m2
+  preference: balanced
 ```
+
+日期分段默认候选：
+- 2025-12-01 前：`kuaishou/kat-coder-pro-v1`、`minimax/minimax-m2`
+- 2025-12-01 及后：`openai/gpt-5-nano`、`google/gemini-2.5-flash-lite`、`x-ai/grok-4-fast`、`qwen/qwen3-235b-a22b-2507`、`deepseek/deepseek-chat-v3.1`
 
 ---
 

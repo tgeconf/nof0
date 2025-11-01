@@ -60,6 +60,9 @@ type MarketSection struct {
 
 type Config struct {
 	rest.RestConf
+	// Env indicates the running environment: test | dev | prod
+	// Defaults to test. In test mode we prefer low-cost LLM routing.
+	Env      string          `json:",default=test"`
 	DataPath string          `json:",default=../../mcp/data"`
 	Postgres PostgresConf    `json:",optional"`
 	Redis    redis.RedisConf `json:",optional"`
@@ -95,6 +98,14 @@ func Load(path string) (*Config, error) {
 }
 
 func (c *Config) Validate() error {
+	switch strings.ToLower(strings.TrimSpace(c.Env)) {
+	case "", "test", "dev", "prod":
+		if strings.TrimSpace(c.Env) == "" {
+			c.Env = "test"
+		}
+	default:
+		return errors.New("config: env must be one of test|dev|prod")
+	}
 	if strings.TrimSpace(c.DataPath) == "" {
 		return errors.New("config: dataPath is required")
 	}
@@ -212,6 +223,11 @@ func (c *Config) loadLLM(baseDir string) error {
 		return fmt.Errorf("load llm config %s: %w", path, err)
 	}
 	c.LLM.File = path
+	// If running in test environment, force zenmux/auto by default to enable
+	// low-cost routing (can be further refined by llm routing_defaults).
+	if strings.EqualFold(c.Env, "test") {
+		cfg.DefaultModel = "zenmux/auto"
+	}
 	c.LLM.Config = cfg
 	return nil
 }

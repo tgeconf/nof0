@@ -9,6 +9,13 @@ timeout: "60s"
 max_retries: 3
 log_level: "info"
 
+# Optional: Defaults for zenmux/auto routing (used in tests or when Model = zenmux/auto)
+# routing_defaults:
+#   available_models:
+#     - kuaishou/kat-coder-pro-v1
+#     - minimax/minimax-m2
+#   preference: balanced
+
 models:
   gpt-5:
     provider: "openai"
