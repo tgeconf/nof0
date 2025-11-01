@@ -32,6 +32,18 @@ nof0/
 
 ## 快速开始
 
+### 初始化项目
+
+克隆项目后，配置 Git 自动递归处理子模块：
+
+```bash
+git clone <repo>
+cd nof0
+git config submodule.recurse true
+```
+
+此后 `git pull` 会自动更新子模块（包括 `go/etc/prompts/base`），无需手动执行 `git submodule update`。
+
 ### 启动前端
 
 ```bash
