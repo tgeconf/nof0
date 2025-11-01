@@ -11,12 +11,17 @@ import (
 	"nof0-api/internal/handler"
 	"nof0-api/internal/svc"
 
+	"github.com/joho/godotenv"
 	"github.com/zeromicro/go-zero/rest"
 )
 
 var configFile = flag.String("f", "etc/nof0.yaml", "the config file")
 
 func main() {
+	// Auto-load environment variables from .env at startup.
+	// It's fine if the file does not exist; envs can still be provided by the OS.
+	_ = godotenv.Load()
+
 	flag.Parse()
 
 	cfg := config.MustLoad(*configFile)

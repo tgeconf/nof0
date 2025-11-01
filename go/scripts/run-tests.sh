@@ -22,6 +22,9 @@ cd "$(dirname "$0")/.."
 echo -e "${YELLOW}Running unit tests...${NC}"
 echo ""
 
+# Force low-cost/free LLM models during tests unless explicitly disabled
+export LLM_TEST_MODE=${LLM_TEST_MODE:-1}
+
 # Run all unit tests
 if go test ./internal/... -v; then
     echo ""

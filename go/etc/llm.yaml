@@ -1,5 +1,9 @@
 base_url: "https://zenmux.ai/api/v1"
 api_key: "${ZENMUX_API_KEY}"
+# Default model used at runtime. In unit tests you can enable low-cost
+# overrides via environment variables without changing this file:
+#   - LLM_TEST_MODE=1
+#   - LLM_TEST_MODEL or LLM_TEST_MODEL_LIST
 default_model: "gpt-5"
 timeout: "60s"
 max_retries: 3

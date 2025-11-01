@@ -282,6 +282,32 @@ go test -cover ./internal/data/
 - 集成测试: 100% API端点
 - 详细文档: [TEST_README.md](TEST_README.md)
 
+### 测试时强制使用低成本 LLM
+
+为避免单测期间使用昂贵模型，可开启测试模式强制选择低成本/免费模型（只影响 `pkg/llm` 默认模型选择，不改动业务逻辑）：
+
+- 设置 `LLM_TEST_MODE=1` 后，按日期分段选择：
+  - 2025-12-01 之前：优先 `kuaishou/kat-coder-pro-v1`，其次 `minimax/minimax-m2`
+  - 2025-12-01 及之后：`openai/gpt-5-nano`、`google/gemini-2.5-flash-lite`、`x-ai/grok-4-fast`、`qwen/qwen3-235b-a22b-2507`、`deepseek/deepseek-chat-v3.1`
+
+可选覆盖：
+
+- `LLM_TEST_MODEL`：强制为单一模型（优先级最高）。
+- `LLM_TEST_MODEL_LIST`：逗号分隔的模型列表，取第一个。
+
+示例：
+
+```bash
+# 默认按日期优先级
+LLM_TEST_MODE=1 go test ./...
+
+# 指定单个模型
+LLM_TEST_MODE=1 LLM_TEST_MODEL=minimax/minimax-m2 go test ./...
+
+# 自定义优先级列表
+LLM_TEST_MODE=1 LLM_TEST_MODEL_LIST="openai/gpt-5-nano,deepseek/deepseek-chat-v3.1" go test ./...
+```
+
 ---
 
 ## 后端目录结构

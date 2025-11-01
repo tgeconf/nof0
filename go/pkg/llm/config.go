@@ -23,6 +23,11 @@ const (
 	envDefaultModel = "ZENMUX_DEFAULT_MODEL"
 	envTimeout      = "ZENMUX_TIMEOUT"
 	envMaxRetries   = "ZENMUX_MAX_RETRIES"
+
+	// Test-only overrides
+	envTestMode      = "LLM_TEST_MODE"       // when set to 1/true, force low-cost models for tests
+	envTestModel     = "LLM_TEST_MODEL"      // optional: single model to force in tests
+	envTestModelList = "LLM_TEST_MODEL_LIST" // optional: comma-separated model list to prefer in tests
 )
 
 // Config holds runtime settings for the LLM client.
@@ -89,6 +94,8 @@ func LoadConfigFromReader(r io.Reader) (*Config, error) {
 
 	cfg.applyDefaults()
 	cfg.applyEnvOverrides()
+	// Apply test-mode model override before validation so empty defaults get filled.
+	cfg.applyTestModelOverride(time.Now().UTC())
 	if err := cfg.parseTimeout(); err != nil {
 		return nil, err
 	}
@@ -196,4 +203,54 @@ func expandAndOverride(current, envKey string) string {
 		return envVal
 	}
 	return current
+}
+
+// applyTestModelOverride enforces a low-cost model during unit tests when enabled
+// via `LLM_TEST_MODE`. Priority defaults change on December 1, 2025.
+// - If LLM_TEST_MODEL is set, it takes precedence.
+// - Else if LLM_TEST_MODEL_LIST is set (comma-separated), the first entry is used.
+// - Else a built-in priority list is used based on the provided time.
+func (c *Config) applyTestModelOverride(now time.Time) {
+	enabled := strings.EqualFold(strings.TrimSpace(os.Getenv(envTestMode)), "1") ||
+		strings.EqualFold(strings.TrimSpace(os.Getenv(envTestMode)), "true")
+	if !enabled {
+		return
+	}
+
+	if forced := strings.TrimSpace(os.Getenv(envTestModel)); forced != "" {
+		c.DefaultModel = forced
+		return
+	}
+
+	var candidates []string
+	if list := strings.TrimSpace(os.Getenv(envTestModelList)); list != "" {
+		// split by comma and trim spaces
+		parts := strings.Split(list, ",")
+		for _, p := range parts {
+			if s := strings.TrimSpace(p); s != "" {
+				candidates = append(candidates, s)
+			}
+		}
+	} else {
+		// Built-in priority lists with a hard date cutoff.
+		cutoff := time.Date(2025, 12, 1, 0, 0, 0, 0, time.UTC)
+		if now.Before(cutoff) {
+			candidates = []string{
+				"kuaishou/kat-coder-pro-v1",
+				"minimax/minimax-m2",
+			}
+		} else {
+			candidates = []string{
+				"openai/gpt-5-nano",
+				"google/gemini-2.5-flash-lite",
+				"x-ai/grok-4-fast",
+				"qwen/qwen3-235b-a22b-2507",
+				"deepseek/deepseek-chat-v3.1",
+			}
+		}
+	}
+
+	if len(candidates) > 0 {
+		c.DefaultModel = candidates[0]
+	}
 }
