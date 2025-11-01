@@ -10,9 +10,10 @@ import (
 	"github.com/zeromicro/go-zero/core/conf"
 	"github.com/zeromicro/go-zero/core/stores/redis"
 	"github.com/zeromicro/go-zero/rest"
-	"gopkg.in/yaml.v3"
 
+	"nof0-api/pkg/executor"
 	"nof0-api/pkg/llm"
+	"nof0-api/pkg/manager"
 )
 
 type PostgresConf struct {
@@ -34,13 +35,13 @@ type LLMSection struct {
 }
 
 type ExecutorSection struct {
-	File string         `json:",optional"`
-	Raw  map[string]any `json:"-"`
+	File   string           `json:",optional"`
+	Config *executor.Config `json:"-"`
 }
 
 type ManagerSection struct {
-	File string         `json:",optional"`
-	Raw  map[string]any `json:"-"`
+	File   string          `json:",optional"`
+	Config *manager.Config `json:"-"`
 }
 
 type Config struct {
@@ -87,10 +88,10 @@ func (c *Config) Validate() error {
 	if err := c.validateLLM(); err != nil {
 		return err
 	}
-	if err := c.validateFileSection("executor", c.Executor.File, c.Executor.Raw); err != nil {
+	if err := c.validateExecutor(); err != nil {
 		return err
 	}
-	if err := c.validateFileSection("manager", c.Manager.File, c.Manager.Raw); err != nil {
+	if err := c.validateManager(); err != nil {
 		return err
 	}
 	return nil
@@ -119,12 +120,22 @@ func (c *Config) validateLLM() error {
 	return nil
 }
 
-func (c *Config) validateFileSection(name, file string, data map[string]any) error {
-	if file == "" {
+func (c *Config) validateExecutor() error {
+	if c.Executor.File == "" {
 		return nil
 	}
-	if len(data) == 0 {
-		return fmt.Errorf("config: %s file %q loaded empty or failed to parse", name, file)
+	if c.Executor.Config == nil {
+		return fmt.Errorf("config: executor file %q loaded without config", c.Executor.File)
+	}
+	return nil
+}
+
+func (c *Config) validateManager() error {
+	if c.Manager.File == "" {
+		return nil
+	}
+	if c.Manager.Config == nil {
+		return fmt.Errorf("config: manager file %q loaded without config", c.Manager.File)
 	}
 	return nil
 }
@@ -134,11 +145,11 @@ func (c *Config) hydrateSections(mainPath string) error {
 	if err := c.loadLLM(baseDir); err != nil {
 		return err
 	}
-	if err := c.loadYAMLSection(baseDir, &c.Executor.File, &c.Executor.Raw); err != nil {
-		return fmt.Errorf("load executor config: %w", err)
+	if err := c.loadExecutor(baseDir); err != nil {
+		return err
 	}
-	if err := c.loadYAMLSection(baseDir, &c.Manager.File, &c.Manager.Raw); err != nil {
-		return fmt.Errorf("load manager config: %w", err)
+	if err := c.loadManager(baseDir); err != nil {
+		return err
 	}
 	return nil
 }
@@ -157,24 +168,31 @@ func (c *Config) loadLLM(baseDir string) error {
 	return nil
 }
 
-func (c *Config) loadYAMLSection(baseDir string, file *string, target *map[string]any) error {
-	if file == nil || *file == "" {
+func (c *Config) loadExecutor(baseDir string) error {
+	if c.Executor.File == "" {
 		return nil
 	}
-	path := resolvePath(baseDir, *file)
-	data, err := os.ReadFile(path)
+	path := resolvePath(baseDir, c.Executor.File)
+	cfg, err := executor.LoadConfig(path)
 	if err != nil {
-		return fmt.Errorf("read %s: %w", path, err)
+		return fmt.Errorf("load executor config %s: %w", path, err)
 	}
-	var out map[string]any
-	if err := yaml.Unmarshal(data, &out); err != nil {
-		return fmt.Errorf("unmarshal %s: %w", path, err)
+	c.Executor.File = path
+	c.Executor.Config = cfg
+	return nil
+}
+
+func (c *Config) loadManager(baseDir string) error {
+	if c.Manager.File == "" {
+		return nil
 	}
-	*file = path
-	if out == nil {
-		out = make(map[string]any)
+	path := resolvePath(baseDir, c.Manager.File)
+	cfg, err := manager.LoadConfig(path)
+	if err != nil {
+		return fmt.Errorf("load manager config %s: %w", path, err)
 	}
-	*target = out
+	c.Manager.File = path
+	c.Manager.Config = cfg
 	return nil
 }
 

@@ -1,0 +1,13 @@
+model_alias: gpt-5
+prompt_template: prompts/executor/default_prompt.tmpl
+btc_eth_leverage: 20
+altcoin_leverage: 10
+min_confidence: 75
+min_risk_reward: 3.0
+max_positions: 4
+decision_interval: 3m
+decision_timeout: 60s
+max_concurrent_decisions: 1
+allowed_trader_ids: []
+signing_key: ""
+overrides: {}

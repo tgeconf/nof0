@@ -1,0 +1,197 @@
+package executor
+
+import (
+	"errors"
+	"fmt"
+	"io"
+	"os"
+	"path/filepath"
+	"strings"
+	"time"
+
+	"gopkg.in/yaml.v3"
+)
+
+// Config controls runtime behaviour for the executor module.
+type Config struct {
+	ModelAlias             string              `yaml:"model_alias"`
+	PromptTemplate         string              `yaml:"prompt_template"`
+	BTCETHLeverage         int                 `yaml:"btc_eth_leverage"`
+	AltcoinLeverage        int                 `yaml:"altcoin_leverage"`
+	MinConfidence          int                 `yaml:"min_confidence"`
+	MinRiskReward          float64             `yaml:"min_risk_reward"`
+	MaxPositions           int                 `yaml:"max_positions"`
+	DecisionInterval       time.Duration       `yaml:"-"`
+	DecisionTimeout        time.Duration       `yaml:"-"`
+	MaxConcurrentDecisions int                 `yaml:"max_concurrent_decisions"`
+	AllowedTraderIDs       []string            `yaml:"allowed_trader_ids"`
+	SigningKey             string              `yaml:"signing_key"`
+	Overrides              map[string]Override `yaml:"overrides"`
+
+	DecisionIntervalRaw string `yaml:"decision_interval"`
+	DecisionTimeoutRaw  string `yaml:"decision_timeout"`
+	baseDir             string
+	minRiskRewardSet    bool
+}
+
+// Override allows per-trader or per-symbol overrides of core thresholds.
+type Override struct {
+	BTCETHLeverage  *int     `yaml:"btc_eth_leverage,omitempty"`
+	AltcoinLeverage *int     `yaml:"altcoin_leverage,omitempty"`
+	MinConfidence   *int     `yaml:"min_confidence,omitempty"`
+	MinRiskReward   *float64 `yaml:"min_risk_reward,omitempty"`
+	MaxPositions    *int     `yaml:"max_positions,omitempty"`
+}
+
+// LoadConfig reads configuration from disk.
+func LoadConfig(path string) (*Config, error) {
+	file, err := os.Open(path)
+	if err != nil {
+		return nil, fmt.Errorf("open executor config: %w", err)
+	}
+	defer file.Close()
+	return LoadConfigFromReader(file, filepath.Dir(path))
+}
+
+// LoadConfigFromReader constructs a Config from a reader with the provided base directory.
+func LoadConfigFromReader(r io.Reader, baseDir string) (*Config, error) {
+	data, err := io.ReadAll(r)
+	if err != nil {
+		return nil, fmt.Errorf("read executor config: %w", err)
+	}
+
+	var cfg Config
+	if err := yaml.Unmarshal(data, &cfg); err != nil {
+		return nil, fmt.Errorf("unmarshal executor config: %w", err)
+	}
+	var raw map[string]any
+	if err := yaml.Unmarshal(data, &raw); err == nil {
+		if _, ok := raw["min_risk_reward"]; ok {
+			cfg.minRiskRewardSet = true
+		}
+	}
+	cfg.baseDir = baseDir
+	cfg.applyDefaults()
+	if err := cfg.parseDurations(); err != nil {
+		return nil, err
+	}
+	cfg.expandFields()
+	if err := cfg.Validate(); err != nil {
+		return nil, err
+	}
+	return &cfg, nil
+}
+
+func (c *Config) applyDefaults() {
+	if strings.TrimSpace(c.DecisionIntervalRaw) == "" {
+		c.DecisionIntervalRaw = "3m"
+	}
+	if strings.TrimSpace(c.DecisionTimeoutRaw) == "" {
+		c.DecisionTimeoutRaw = "60s"
+	}
+	if c.MaxConcurrentDecisions <= 0 {
+		c.MaxConcurrentDecisions = 1
+	}
+	if !c.minRiskRewardSet && c.MinRiskReward <= 0 {
+		c.MinRiskReward = 3.0
+	}
+}
+
+func (c *Config) parseDurations() error {
+	interval, err := time.ParseDuration(c.DecisionIntervalRaw)
+	if err != nil {
+		return fmt.Errorf("executor config: invalid decision_interval %q: %w", c.DecisionIntervalRaw, err)
+	}
+	if interval <= 0 {
+		return fmt.Errorf("executor config: decision_interval must be positive, got %s", interval)
+	}
+	timeout, err := time.ParseDuration(c.DecisionTimeoutRaw)
+	if err != nil {
+		return fmt.Errorf("executor config: invalid decision_timeout %q: %w", c.DecisionTimeoutRaw, err)
+	}
+	if timeout <= 0 {
+		return fmt.Errorf("executor config: decision_timeout must be positive, got %s", timeout)
+	}
+	c.DecisionInterval = interval
+	c.DecisionTimeout = timeout
+	return nil
+}
+
+func (c *Config) expandFields() {
+	c.PromptTemplate = c.resolvePath(c.PromptTemplate)
+	c.SigningKey = strings.TrimSpace(os.ExpandEnv(c.SigningKey))
+	for i, id := range c.AllowedTraderIDs {
+		c.AllowedTraderIDs[i] = strings.TrimSpace(id)
+	}
+}
+
+func (c *Config) resolvePath(path string) string {
+	path = strings.TrimSpace(os.ExpandEnv(path))
+	if path == "" || filepath.IsAbs(path) {
+		return path
+	}
+	return filepath.Join(c.baseDir, path)
+}
+
+// Validate ensures configuration sanity.
+func (c *Config) Validate() error {
+	if strings.TrimSpace(c.ModelAlias) == "" {
+		return errors.New("executor config: model_alias is required")
+	}
+	if strings.TrimSpace(c.PromptTemplate) == "" {
+		return errors.New("executor config: prompt_template is required")
+	}
+	if _, err := os.Stat(c.PromptTemplate); err != nil {
+		return fmt.Errorf("executor config: prompt_template %q not accessible: %w", c.PromptTemplate, err)
+	}
+	if c.BTCETHLeverage <= 0 {
+		return errors.New("executor config: btc_eth_leverage must be positive")
+	}
+	if c.AltcoinLeverage <= 0 {
+		return errors.New("executor config: altcoin_leverage must be positive")
+	}
+	if c.MinConfidence < 0 || c.MinConfidence > 100 {
+		return errors.New("executor config: min_confidence must be between 0 and 100")
+	}
+	if c.MinRiskReward <= 0 {
+		return errors.New("executor config: min_risk_reward must be positive")
+	}
+	if c.MaxPositions <= 0 {
+		return errors.New("executor config: max_positions must be positive")
+	}
+	if len(c.AllowedTraderIDs) > 0 {
+		seen := make(map[string]struct{}, len(c.AllowedTraderIDs))
+		for _, id := range c.AllowedTraderIDs {
+			if id == "" {
+				return errors.New("executor config: allowed_trader_ids contains empty value")
+			}
+			if _, ok := seen[id]; ok {
+				return fmt.Errorf("executor config: allowed_trader_ids contains duplicate %q", id)
+			}
+			seen[id] = struct{}{}
+		}
+	}
+	for key, override := range c.Overrides {
+		if strings.TrimSpace(key) == "" {
+			return errors.New("executor config: overrides cannot contain empty keys")
+		}
+		if override.BTCETHLeverage != nil && *override.BTCETHLeverage <= 0 {
+			return fmt.Errorf("executor config: override %s btc_eth_leverage must be positive", key)
+		}
+		if override.AltcoinLeverage != nil && *override.AltcoinLeverage <= 0 {
+			return fmt.Errorf("executor config: override %s altcoin_leverage must be positive", key)
+		}
+		if override.MinConfidence != nil {
+			if *override.MinConfidence < 0 || *override.MinConfidence > 100 {
+				return fmt.Errorf("executor config: override %s min_confidence must be between 0 and 100", key)
+			}
+		}
+		if override.MinRiskReward != nil && *override.MinRiskReward <= 0 {
+			return fmt.Errorf("executor config: override %s min_risk_reward must be positive", key)
+		}
+		if override.MaxPositions != nil && *override.MaxPositions <= 0 {
+			return fmt.Errorf("executor config: override %s max_positions must be positive", key)
+		}
+	}
+	return nil
+}

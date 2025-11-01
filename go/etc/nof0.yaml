@@ -24,6 +24,12 @@ TTL:
 LLM:
   File: llm.yaml
 
+Executor:
+  File: executor.yaml
+
+Manager:
+  File: manager.yaml
+
 # CORS settings
 Cors:
   AllowOrigins: ['*']
