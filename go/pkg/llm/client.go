@@ -135,8 +135,9 @@ func NewClient(cfg *Config, opts ...ClientOption) (*Client, error) {
 		httpClient:   optState.httpClient,
 	}
 
-	// If default model is zenmux/auto, prefer config-provided routing defaults,
-	// otherwise fall back to a built-in date-based list.
+	// NOTE: zenmux/auto routing is currently unstable (returns HTTP 500).
+	// This code is retained for future use when the API is fixed.
+	// For now, test mode uses a fixed low-cost model instead.
 	if strings.EqualFold(clientCfg.DefaultModel, "zenmux/auto") {
 		if clientCfg.RoutingDefaults != nil && len(clientCfg.RoutingDefaults.AvailableModels) > 0 {
 			c.defaultRouting = clientCfg.RoutingDefaults

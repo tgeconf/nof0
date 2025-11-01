@@ -37,7 +37,7 @@ func TestMain(m *testing.M) {
 
 func exists(p string) bool { _, err := os.Stat(p); return err == nil }
 
-// newIntegrationClient builds a client targeting Zenmux with auto-routing.
+// newIntegrationClient builds a client targeting Zenmux with a low-cost model.
 func newIntegrationClient(t *testing.T) *Client {
 	t.Helper()
 
@@ -53,7 +53,7 @@ func newIntegrationClient(t *testing.T) *Client {
 	cfg := &Config{
 		BaseURL:      baseURL,
 		APIKey:       apiKey,
-		DefaultModel: "zenmux/auto",
+		DefaultModel: "google/gemini-2.5-flash-lite", // Use low-cost model
 		Timeout:      15 * time.Second,
 		MaxRetries:   2,
 		LogLevel:     "error",
@@ -66,8 +66,8 @@ func newIntegrationClient(t *testing.T) *Client {
 	return client
 }
 
-// TestIntegration_Chat_AutoRouting_Basic performs a minimal routed chat call.
-func TestIntegration_Chat_AutoRouting_Basic(t *testing.T) {
+// TestIntegration_Chat_LowCostModel performs a minimal chat call with a free model.
+func TestIntegration_Chat_LowCostModel(t *testing.T) {
 	client := newIntegrationClient(t)
 	defer client.Close()
 
@@ -75,7 +75,6 @@ func TestIntegration_Chat_AutoRouting_Basic(t *testing.T) {
 	defer cancel()
 
 	resp, err := client.Chat(ctx, &ChatRequest{
-		Model: "zenmux/auto",
 		Messages: []Message{
 			{Role: "user", Content: "Say a short hello."},
 		},
@@ -86,4 +85,9 @@ func TestIntegration_Chat_AutoRouting_Basic(t *testing.T) {
 	if resp == nil || len(resp.Choices) == 0 || resp.Choices[0].Message.Content == "" {
 		t.Fatalf("unexpected empty response: %#v", resp)
 	}
+	content := resp.Choices[0].Message.Content
+	if len(content) > 50 {
+		content = content[:50] + "..."
+	}
+	t.Logf("Response: %s", content)
 }

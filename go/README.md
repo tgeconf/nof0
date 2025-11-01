@@ -282,23 +282,14 @@ go test -cover ./internal/data/
 - 集成测试: 100% API端点
 - 详细文档: [TEST_README.md](TEST_README.md)
 
-### 系统环境与测试路由
+### 系统环境与测试模型选择
 
 `etc/nof0.yaml` 新增 `Env` 字段（test|dev|prod，默认 test）。当 `Env=test` 时：
-- LLM 默认模型切换为 `zenmux/auto`，并按日期或 `routing_defaults` 进行低成本/免费模型自动路由。
-- 你也可以在 `etc/llm.yaml` 的 `routing_defaults` 中控制候选与偏好：
+- LLM 默认模型自动切换为低成本模型，避免测试期间产生高额费用。
+- 当前使用 `google/gemini-2.5-flash-lite`（性价比高，成本低）。
+- 可在 `etc/nof0.yaml` 中设置 `Env: prod` 以使用生产模型配置。
 
-```yaml
-routing_defaults:
-  available_models:
-    - kuaishou/kat-coder-pro-v1
-    - minimax/minimax-m2
-  preference: balanced
-```
-
-日期分段默认候选：
-- 2025-12-01 前：`kuaishou/kat-coder-pro-v1`、`minimax/minimax-m2`
-- 2025-12-01 及后：`openai/gpt-5-nano`、`google/gemini-2.5-flash-lite`、`x-ai/grok-4-fast`、`qwen/qwen3-235b-a22b-2507`、`deepseek/deepseek-chat-v3.1`
+**注意**: Zenmux 的自动路由功能（`zenmux/auto`）目前不稳定，待官方修复后将迁移到智能路由模式
 
 ---
 

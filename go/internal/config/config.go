@@ -223,10 +223,10 @@ func (c *Config) loadLLM(baseDir string) error {
 		return fmt.Errorf("load llm config %s: %w", path, err)
 	}
 	c.LLM.File = path
-	// If running in test environment, force zenmux/auto by default to enable
-	// low-cost routing (can be further refined by llm routing_defaults).
+	// If running in test environment, use a low-cost model directly.
+	// Using google/gemini-2.5-flash-lite for good quality at low cost.
 	if strings.EqualFold(c.Env, "test") {
-		cfg.DefaultModel = "zenmux/auto"
+		cfg.DefaultModel = "google/gemini-2.5-flash-lite"
 	}
 	c.LLM.Config = cfg
 	return nil
