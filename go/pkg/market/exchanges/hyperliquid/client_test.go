@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"nof0-api/pkg/market"
@@ -84,6 +85,111 @@ func TestClientGetMarketInfo(t *testing.T) {
 	require.InDelta(t, 150.0, info.MidPrice, 1e-9)
 	require.InDelta(t, 0.000125, info.FundingRate, 1e-9)
 	require.InDelta(t, 150.0, info.OpenInterest, 1e-9)
+}
+
+// TestClientGetMarketInfoErrors tests error handling in GetMarketInfo.
+func TestClientGetMarketInfoErrors(t *testing.T) {
+	tests := []struct {
+		name        string
+		setupServer func() *httptest.Server
+		symbol      string
+		wantErr     bool
+		errContains string
+	}{
+		{
+			name: "missing mark price",
+			setupServer: func() *httptest.Server {
+				return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					payload := []interface{}{
+						map[string]interface{}{
+							"universe": []map[string]interface{}{
+								{"name": "TEST", "szDecimals": 5, "maxLeverage": 40, "marginTableId": 56, "isDelisted": false},
+							},
+						},
+						[]map[string]interface{}{
+							{
+								"funding":      "0.0001",
+								"openInterest": "100",
+								"markPx":       "", // Missing mark price
+								"midPx":        "100",
+							},
+						},
+					}
+					writeJSON(w, payload)
+				}))
+			},
+			symbol:      "TEST",
+			wantErr:     true,
+			errContains: "missing mark price",
+		},
+		{
+			name: "symbol not found",
+			setupServer: func() *httptest.Server {
+				return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					payload := []interface{}{
+						map[string]interface{}{"universe": []map[string]interface{}{}},
+						[]map[string]interface{}{},
+					}
+					writeJSON(w, payload)
+				}))
+			},
+			symbol:      "NOTFOUND",
+			wantErr:     true,
+			errContains: "symbol not found",
+		},
+		{
+			name: "invalid funding rate",
+			setupServer: func() *httptest.Server {
+				return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					payload := []interface{}{
+						map[string]interface{}{
+							"universe": []map[string]interface{}{
+								{"name": "BAD", "szDecimals": 5, "maxLeverage": 40, "marginTableId": 56, "isDelisted": false},
+							},
+						},
+						[]map[string]interface{}{
+							{
+								"funding":      "invalid",
+								"openInterest": "100",
+								"markPx":       "100",
+								"midPx":        "100",
+							},
+						},
+					}
+					writeJSON(w, payload)
+				}))
+			},
+			symbol:      "BAD",
+			wantErr:     true,
+			errContains: "parse funding",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			server := tt.setupServer()
+			defer server.Close()
+
+			client := NewClient(
+				WithBaseURL(server.URL),
+				WithHTTPClient(server.Client()),
+			)
+
+			ctx := context.Background()
+			info, err := client.GetMarketInfo(ctx, tt.symbol)
+
+			if tt.wantErr {
+				assert.Error(t, err)
+				assert.Nil(t, info)
+				if tt.errContains != "" {
+					assert.Contains(t, err.Error(), tt.errContains)
+				}
+			} else {
+				assert.NoError(t, err)
+				assert.NotNil(t, info)
+			}
+		})
+	}
 }
 
 func TestListAssetsReflectsDelistedStatus(t *testing.T) {
@@ -277,4 +383,219 @@ func makeSequence(start, end, step float64) []float64 {
 func writeJSON(w http.ResponseWriter, payload interface{}) {
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(payload)
+}
+
+// TestNewProvider tests the NewProvider constructor and options.
+func TestNewProvider(t *testing.T) {
+	tests := []struct {
+		name         string
+		opts         []ProviderOption
+		wantTimeout  time.Duration
+		validateFunc func(*testing.T, *Provider)
+	}{
+		{
+			name:        "default configuration",
+			opts:        nil,
+			wantTimeout: defaultProviderTimeout,
+		},
+		{
+			name:        "custom timeout",
+			opts:        []ProviderOption{WithTimeout(5 * time.Second)},
+			wantTimeout: 5 * time.Second,
+		},
+		{
+			name: "with client options",
+			opts: []ProviderOption{
+				WithClientOptions(WithMaxRetries(3)),
+				WithTimeout(10 * time.Second),
+			},
+			wantTimeout: 10 * time.Second,
+			validateFunc: func(t *testing.T, p *Provider) {
+				assert.Equal(t, 3, p.client.maxRetries)
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			provider := NewProvider(tt.opts...)
+
+			assert.NotNil(t, provider)
+			assert.NotNil(t, provider.client)
+			assert.Equal(t, tt.wantTimeout, provider.timeout)
+
+			if tt.validateFunc != nil {
+				tt.validateFunc(t, provider)
+			}
+		})
+	}
+}
+
+// TestProviderWithTimeout tests the withTimeout helper.
+func TestProviderWithTimeout(t *testing.T) {
+	provider := NewProvider(WithTimeout(3 * time.Second))
+
+	tests := []struct {
+		name      string
+		inputCtx  context.Context
+		expectNil bool
+	}{
+		{
+			name:      "nil context creates background",
+			inputCtx:  nil,
+			expectNil: false,
+		},
+		{
+			name:      "existing context gets timeout",
+			inputCtx:  context.Background(),
+			expectNil: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctx, cancel := provider.withTimeout(tt.inputCtx)
+			defer cancel()
+
+			assert.NotNil(t, ctx)
+			deadline, ok := ctx.Deadline()
+			assert.True(t, ok, "context should have deadline")
+			assert.True(t, time.Until(deadline) <= 3*time.Second)
+		})
+	}
+}
+
+// TestClientDoRequestRetry tests the retry logic in doRequest.
+func TestClientDoRequestRetry(t *testing.T) {
+	tests := []struct {
+		name        string
+		setupServer func() *httptest.Server
+		maxRetries  int
+		wantErr     bool
+		errContains string
+		expectCalls int
+	}{
+		{
+			name: "successful after retry",
+			setupServer: func() *httptest.Server {
+				callCount := 0
+				return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					callCount++
+					if callCount < 2 {
+						w.WriteHeader(http.StatusInternalServerError)
+						return
+					}
+					writeJSON(w, map[string]string{"BTC": "150"})
+				}))
+			},
+			maxRetries:  2,
+			wantErr:     false,
+			expectCalls: 2,
+		},
+		{
+			name: "fail after max retries",
+			setupServer: func() *httptest.Server {
+				return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					w.WriteHeader(http.StatusBadGateway)
+				}))
+			},
+			maxRetries:  1,
+			wantErr:     true,
+			errContains: "http status 502",
+		},
+		{
+			name: "context timeout during retry",
+			setupServer: func() *httptest.Server {
+				return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					time.Sleep(200 * time.Millisecond)
+					writeJSON(w, map[string]string{})
+				}))
+			},
+			maxRetries:  2,
+			wantErr:     true,
+			errContains: "context deadline exceeded",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			server := tt.setupServer()
+			defer server.Close()
+
+			client := NewClient(
+				WithBaseURL(server.URL),
+				WithHTTPClient(server.Client()),
+				WithMaxRetries(tt.maxRetries),
+			)
+
+			ctx := context.Background()
+			if tt.name == "context timeout during retry" {
+				var cancel context.CancelFunc
+				ctx, cancel = context.WithTimeout(ctx, 100*time.Millisecond)
+				defer cancel()
+			}
+
+			var result AllMidsResponse
+			err := client.doRequest(ctx, InfoRequest{Type: "allMids"}, &result)
+
+			if tt.wantErr {
+				assert.Error(t, err)
+				if tt.errContains != "" {
+					assert.Contains(t, err.Error(), tt.errContains)
+				}
+			} else {
+				assert.NoError(t, err)
+			}
+		})
+	}
+}
+
+// TestClientGetCurrentPrice tests the GetCurrentPrice method.
+func TestClientGetCurrentPrice(t *testing.T) {
+	tests := []struct {
+		name        string
+		symbol      string
+		wantPrice   float64
+		wantErr     bool
+		errContains string
+	}{
+		{
+			name:      "successful price retrieval",
+			symbol:    "BTC",
+			wantPrice: 150.0,
+			wantErr:   false,
+		},
+		{
+			name:        "symbol not found",
+			symbol:      "UNKNOWN",
+			wantErr:     true,
+			errContains: "not found",
+		},
+		{
+			name:      "case insensitive symbol",
+			symbol:    "btc",
+			wantPrice: 150.0,
+			wantErr:   false,
+		},
+	}
+
+	server, client := newMockHyperliquidServer(t)
+	defer server.Close()
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctx := context.Background()
+			price, err := client.GetCurrentPrice(ctx, tt.symbol)
+
+			if tt.wantErr {
+				assert.Error(t, err)
+				if tt.errContains != "" {
+					assert.Contains(t, err.Error(), tt.errContains)
+				}
+			} else {
+				assert.NoError(t, err)
+				assert.InDelta(t, tt.wantPrice, price, 1e-9)
+			}
+		})
+	}
 }
