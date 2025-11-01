@@ -114,3 +114,9 @@ func (p *Provider) CancelAllBySymbol(ctx context.Context, coin string) error {
 func (p *Provider) FormatSize(ctx context.Context, coin string, qty float64) (string, error) {
 	return p.client.FormatSize(ctx, coin, qty)
 }
+
+// FormatPrice rounds and formats a price using the client's configured
+// significant figures, after verifying the asset exists.
+func (p *Provider) FormatPrice(ctx context.Context, coin string, price float64) (string, error) {
+	return p.client.FormatPrice(ctx, coin, price)
+}

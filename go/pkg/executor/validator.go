@@ -3,6 +3,7 @@ package executor
 import (
 	"fmt"
 	"strings"
+	"time"
 )
 
 // ValidateDecisions applies sanity checks against configuration and current context.
@@ -49,13 +50,85 @@ func ValidateDecisions(cfg *Config, ctx *Context, decisions []Decision) error {
 					return fmt.Errorf("decision[%d]: reward/risk %.2f below min %.2f", i, rr, cfg.MinRiskReward)
 				}
 			}
-			// Leverage caps
+			// Leverage caps (config) and asset-level cap if available; take the minimum
+			capLev := cfg.AltcoinLeverage
 			if isBTCETH(d.Symbol) {
-				if d.Leverage > cfg.BTCETHLeverage {
-					return fmt.Errorf("decision[%d]: leverage %dx exceeds BTC/ETH cap %dx", i, d.Leverage, cfg.BTCETHLeverage)
+				capLev = cfg.BTCETHLeverage
+			}
+			if ctx != nil && ctx.AssetMeta != nil {
+				if meta, ok := ctx.AssetMeta[d.Symbol]; ok && meta.MaxLeverage > 0 {
+					ml := int(meta.MaxLeverage)
+					if ml < capLev {
+						capLev = ml
+					}
 				}
-			} else if d.Leverage > cfg.AltcoinLeverage {
-				return fmt.Errorf("decision[%d]: leverage %dx exceeds alt cap %dx", i, d.Leverage, cfg.AltcoinLeverage)
+			}
+			if d.Leverage > capLev {
+				return fmt.Errorf("decision[%d]: leverage %dx exceeds cap %dx", i, d.Leverage, capLev)
+			}
+
+			// Extended guards (enabled only when context provides non-zero values)
+			if ctx != nil {
+				// Liquidity threshold: OI * Price ≥ threshold (new opens only)
+				if ctx.LiquidityThresholdUSD > 0 && ctx.MarketDataMap != nil {
+					if snap, ok := ctx.MarketDataMap[d.Symbol]; ok && snap != nil && snap.OpenInterest != nil && snap.Price.Last > 0 {
+						oiValueUSD := snap.OpenInterest.Latest * snap.Price.Last
+						if oiValueUSD+1e-9 < ctx.LiquidityThresholdUSD {
+							return fmt.Errorf("decision[%d]: %s illiquid: oi*price %.2f < threshold %.2f", i, d.Symbol, oiValueUSD, ctx.LiquidityThresholdUSD)
+						}
+					}
+				}
+
+				// Position value band by category (equity multiples)
+				if ctx.Account.TotalEquity > 0 {
+					equity := ctx.Account.TotalEquity
+					if isBTCETH(d.Symbol) {
+						if ctx.BTCETHPositionValueMinMultiple > 0 {
+							minV := equity * ctx.BTCETHPositionValueMinMultiple
+							if d.PositionSizeUSD+1e-9 < minV {
+								return fmt.Errorf("decision[%d]: position_size_usd %.2f below BTC/ETH min %.2f (%.2fx equity)", i, d.PositionSizeUSD, minV, ctx.BTCETHPositionValueMinMultiple)
+							}
+						}
+						if ctx.BTCETHPositionValueMaxMultiple > 0 {
+							maxV := equity * ctx.BTCETHPositionValueMaxMultiple
+							if d.PositionSizeUSD-1e-9 > maxV {
+								return fmt.Errorf("decision[%d]: position_size_usd %.2f exceeds BTC/ETH max %.2f (%.2fx equity)", i, d.PositionSizeUSD, maxV, ctx.BTCETHPositionValueMaxMultiple)
+							}
+						}
+					} else {
+						if ctx.AltPositionValueMinMultiple > 0 {
+							minV := equity * ctx.AltPositionValueMinMultiple
+							if d.PositionSizeUSD+1e-9 < minV {
+								return fmt.Errorf("decision[%d]: position_size_usd %.2f below alt min %.2f (%.2fx equity)", i, d.PositionSizeUSD, minV, ctx.AltPositionValueMinMultiple)
+							}
+						}
+						if ctx.AltPositionValueMaxMultiple > 0 {
+							maxV := equity * ctx.AltPositionValueMaxMultiple
+							if d.PositionSizeUSD-1e-9 > maxV {
+								return fmt.Errorf("decision[%d]: position_size_usd %.2f exceeds alt max %.2f (%.2fx equity)", i, d.PositionSizeUSD, maxV, ctx.AltPositionValueMaxMultiple)
+							}
+						}
+					}
+				}
+
+				// Margin usage cap after new position margin
+				if ctx.MaxMarginUsagePct > 0 && ctx.Account.TotalEquity > 0 && d.Leverage > 0 {
+					newMargin := d.PositionSizeUSD / float64(d.Leverage)
+					used := ctx.Account.MarginUsed + newMargin
+					usagePct := 100 * (used / ctx.Account.TotalEquity)
+					if usagePct > ctx.MaxMarginUsagePct+1e-9 {
+						return fmt.Errorf("decision[%d]: margin usage %.2f%% exceeds cap %.2f%% after new position", i, usagePct, ctx.MaxMarginUsagePct)
+					}
+				}
+
+				// Cooldown after close
+				if ctx.CooldownAfterClose > 0 && ctx.RecentlyClosed != nil {
+					if ts, ok := ctx.RecentlyClosed[d.Symbol]; ok && !ts.IsZero() {
+						if time.Since(ts) < ctx.CooldownAfterClose {
+							return fmt.Errorf("decision[%d]: %s in cooldown window (%s remaining)", i, d.Symbol, (ctx.CooldownAfterClose - time.Since(ts)).Truncate(time.Second))
+						}
+					}
+				}
 			}
 			// Position count
 			if ctx != nil && len(ctx.Positions) >= cfg.MaxPositions {

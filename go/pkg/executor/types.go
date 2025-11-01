@@ -53,6 +53,13 @@ type PerformanceView struct {
 	UpdatedAt        time.Time
 }
 
+// AssetMeta captures exchange-specific constraints used for validation/formatting.
+type AssetMeta struct {
+	MaxLeverage  float64
+	Precision    int
+	OnlyIsolated bool
+}
+
 // Context aggregates all inputs required to form a decision.
 type Context struct {
 	CurrentTime     string
@@ -66,9 +73,19 @@ type Context struct {
 	Performance     *PerformanceView
 	BTCETHLeverage  int
 	AltcoinLeverage int
+	AssetMeta       map[string]AssetMeta
 	// Optional per-trader risk guards injected by Manager.
 	MaxRiskPct         float64 // e.g., 3 means 3% of equity per trade
 	MaxPositionSizeUSD float64 // hard cap per trade
+	// Optional P0 guards (disabled when zero values):
+	LiquidityThresholdUSD          float64              // require OI*Price ≥ threshold for new opens
+	MaxMarginUsagePct              float64              // after new position margin
+	BTCETHPositionValueMinMultiple float64              // min equity multiple for BTC/ETH position value
+	BTCETHPositionValueMaxMultiple float64              // max equity multiple for BTC/ETH position value
+	AltPositionValueMinMultiple    float64              // min equity multiple for alt position value
+	AltPositionValueMaxMultiple    float64              // max equity multiple for alt position value
+	RecentlyClosed                 map[string]time.Time // last close time per symbol (cooldown)
+	CooldownAfterClose             time.Duration        // disallow new opens until this duration passes
 }
 
 // Decision captures a single trading action suggestion.

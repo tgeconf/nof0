@@ -41,10 +41,41 @@ type TraderConfig struct {
 	PromptTemplate   string         `yaml:"prompt_template"`
 	DecisionInterval time.Duration  `yaml:"-"`
 	RiskParams       RiskParameters `yaml:"risk_params"`
+	ExecGuards       ExecGuards     `yaml:"exec_guards"`
 	AllocationPct    float64        `yaml:"allocation_pct"`
 	AutoStart        bool           `yaml:"auto_start"`
+	JournalEnabled   bool           `yaml:"journal_enabled"`
+	JournalDir       string         `yaml:"journal_dir"`
 
 	DecisionIntervalRaw string `yaml:"decision_interval"`
+}
+
+// ExecGuards defines optional hard guards applied at execution/validation time.
+type ExecGuards struct {
+	MaxNewPositionsPerCycle int     `yaml:"max_new_positions_per_cycle"`
+	LiquidityThresholdUSD   float64 `yaml:"liquidity_threshold_usd"`
+	MaxMarginUsagePct       float64 `yaml:"max_margin_usage_pct"`
+
+	BTCETHMinEquityMultiple float64 `yaml:"btceth_position_value_min_equity_multiple"`
+	BTCETHMaxEquityMultiple float64 `yaml:"btceth_position_value_max_equity_multiple"`
+	AltMinEquityMultiple    float64 `yaml:"alt_position_value_min_equity_multiple"`
+	AltMaxEquityMultiple    float64 `yaml:"alt_position_value_max_equity_multiple"`
+
+	CooldownAfterClose    time.Duration `yaml:"-"`
+	CooldownAfterCloseRaw string        `yaml:"cooldown_after_close"`
+	// Feature toggles (default true if omitted)
+	EnableLiquidityGuard   *bool `yaml:"enable_liquidity_guard"`
+	EnableMarginUsageGuard *bool `yaml:"enable_margin_usage_guard"`
+	EnableValueBandGuard   *bool `yaml:"enable_value_band_guard"`
+	EnableCooldownGuard    *bool `yaml:"enable_cooldown_guard"`
+
+	// Candidate selection
+	CandidateLimit int `yaml:"candidate_limit"`
+
+	// Performance gating
+	SharpePauseThreshold     float64       `yaml:"sharpe_pause_threshold"`
+	PauseDurationOnBreach    time.Duration `yaml:"-"`
+	PauseDurationOnBreachRaw string        `yaml:"pause_duration_on_breach"`
 }
 
 type RiskParameters struct {
@@ -128,6 +159,23 @@ func (c *Config) parseDurations() error {
 			return err
 		}
 		c.Traders[i].DecisionInterval = d
+		// ExecGuards cooldown is optional; parse if provided and non-empty.
+		raw := strings.TrimSpace(c.Traders[i].ExecGuards.CooldownAfterCloseRaw)
+		if raw != "" {
+			cd, err := time.ParseDuration(raw)
+			if err != nil || cd < 0 {
+				return fmt.Errorf("manager config: traders[%d].exec_guards.cooldown_after_close invalid: %v", i, err)
+			}
+			c.Traders[i].ExecGuards.CooldownAfterClose = cd
+		}
+		rawPause := strings.TrimSpace(c.Traders[i].ExecGuards.PauseDurationOnBreachRaw)
+		if rawPause != "" {
+			pd, err := time.ParseDuration(rawPause)
+			if err != nil || pd < 0 {
+				return fmt.Errorf("manager config: traders[%d].exec_guards.pause_duration_on_breach invalid: %v", i, err)
+			}
+			c.Traders[i].ExecGuards.PauseDurationOnBreach = pd
+		}
 	}
 	c.Monitoring.UpdateInterval, err = parsePositiveDuration("monitoring.update_interval", c.Monitoring.UpdateIntervalRaw)
 	if err != nil {
@@ -146,6 +194,7 @@ func (c *Config) expandFields() {
 		c.Traders[i].ExchangeProvider = strings.TrimSpace(c.Traders[i].ExchangeProvider)
 		c.Traders[i].MarketProvider = strings.TrimSpace(c.Traders[i].MarketProvider)
 		c.Traders[i].PromptTemplate = c.resolvePath(c.Traders[i].PromptTemplate)
+		c.Traders[i].JournalDir = c.resolvePath(c.Traders[i].JournalDir)
 	}
 	c.Monitoring.AlertWebhook = strings.TrimSpace(os.ExpandEnv(c.Monitoring.AlertWebhook))
 	c.Monitoring.MetricsExporter = strings.TrimSpace(c.Monitoring.MetricsExporter)
@@ -208,6 +257,16 @@ func (c *Config) Validate() error {
 		totalAllocation += trader.AllocationPct
 		if err := trader.RiskParams.Validate(i); err != nil {
 			return err
+		}
+		// ExecGuards validation (optional; non-negative checks)
+		if trader.ExecGuards.MaxNewPositionsPerCycle < 0 {
+			return fmt.Errorf("manager config: traders[%d].exec_guards.max_new_positions_per_cycle cannot be negative", i)
+		}
+		if trader.ExecGuards.LiquidityThresholdUSD < 0 {
+			return fmt.Errorf("manager config: traders[%d].exec_guards.liquidity_threshold_usd cannot be negative", i)
+		}
+		if trader.ExecGuards.MaxMarginUsagePct < 0 || trader.ExecGuards.MaxMarginUsagePct > 100 {
+			return fmt.Errorf("manager config: traders[%d].exec_guards.max_margin_usage_pct must be 0..100", i)
 		}
 	}
 	if totalAllocation > 100+1e-6 {

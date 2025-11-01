@@ -6,6 +6,7 @@ import (
 
 	"nof0-api/pkg/exchange"
 	executorpkg "nof0-api/pkg/executor"
+	"nof0-api/pkg/journal"
 	"nof0-api/pkg/market"
 )
 
@@ -79,6 +80,7 @@ type VirtualTrader struct {
 	Executor         executorpkg.Executor
 	PromptTemplate   string
 	RiskParams       RiskParameters
+	ExecGuards       ExecGuards
 	ResourceAlloc    ResourceAllocation
 	State            TraderState
 	Performance      *PerformanceMetrics
@@ -86,6 +88,14 @@ type VirtualTrader struct {
 	DecisionInterval time.Duration
 	CreatedAt        time.Time
 	UpdatedAt        time.Time
+	// Cooldown map tracks last successful close time per symbol
+	Cooldown map[string]time.Time
+	// Decision journal writer (per trader)
+	Journal *journal.Writer
+	// Journal flags
+	JournalEnabled bool
+	// Pause window for Sharpe gating
+	PauseUntil time.Time
 }
 
 // Start transitions the trader into running state.
@@ -138,6 +148,9 @@ func (t *VirtualTrader) ShouldMakeDecision() bool {
 	t.mu.RLock()
 	defer t.mu.RUnlock()
 	if t.State != TraderStateRunning {
+		return false
+	}
+	if !t.PauseUntil.IsZero() && time.Now().Before(t.PauseUntil) {
 		return false
 	}
 	if t.DecisionInterval <= 0 {

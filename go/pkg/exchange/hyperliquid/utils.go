@@ -169,3 +169,20 @@ func RoundPriceToSigFigs(price float64, sigfigs int) string {
 }
 
 func isFinite(f float64) bool { return !math.IsNaN(f) && !math.IsInf(f, 0) }
+
+// FormatPrice rounds a raw price to the client's configured significant figures
+// and returns a trimmed decimal string. It optionally checks the asset exists
+// to surface early errors when an unknown symbol is provided.
+func (c *Client) FormatPrice(ctx context.Context, coin string, price float64) (string, error) {
+	if price <= 0 || !isFinite(price) {
+		return "0", fmt.Errorf("hyperliquid: invalid price")
+	}
+	// Ensure asset directory is primed so callers get early symbol errors.
+	if _, err := c.GetAssetInfo(ctx, coin); err != nil {
+		return "", err
+	}
+	if c.priceSigFigs <= 0 {
+		c.priceSigFigs = 5
+	}
+	return RoundPriceToSigFigs(price, c.priceSigFigs), nil
+}
