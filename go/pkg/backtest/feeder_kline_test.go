@@ -1,30 +1,37 @@
 package backtest
 
 import (
-    "bytes"
-    "context"
-    "testing"
+	"bytes"
+	"context"
+	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
 func TestCSVKlineFeeder(t *testing.T) {
-    data := []byte("ts,close\n1,100\n2,101\n3,102\n")
-    feeder, err := NewCSVKlineFeeder("BTC", bytes.NewReader(data))
-    if err != nil { t.Fatalf("NewCSVKlineFeeder: %v", err) }
-    ctx := context.Background()
+	data := []byte("ts,close\n1,100\n2,101\n3,102\n")
+	feeder, err := NewCSVKlineFeeder("BTC", bytes.NewReader(data))
+	assert.NoError(t, err, "NewCSVKlineFeeder should not error")
+	assert.NotNil(t, feeder, "feeder should not be nil")
 
-    snap, ok, err := feeder.Next(ctx, "BTC")
-    if err != nil || !ok { t.Fatalf("Next1: %v ok=%v", err, ok) }
-    if snap.Price.Last != 100 { t.Fatalf("px1=%v", snap.Price.Last) }
+	ctx := context.Background()
 
-    snap, ok, err = feeder.Next(ctx, "BTC")
-    if err != nil || !ok { t.Fatalf("Next2: %v ok=%v", err, ok) }
-    if snap.Price.Last != 101 { t.Fatalf("px2=%v", snap.Price.Last) }
-    if snap.Change.OneHour <= 0 { t.Fatalf("expected positive change") }
+	snap, ok, err := feeder.Next(ctx, "BTC")
+	assert.NoError(t, err, "Next1 should not error")
+	assert.True(t, ok, "Next1 should return ok=true")
+	assert.Equal(t, float64(100), snap.Price.Last, "first price should be 100")
 
-    _, ok, err = feeder.Next(ctx, "BTC")
-    if err != nil || !ok { t.Fatalf("Next3: %v ok=%v", err, ok) }
+	snap, ok, err = feeder.Next(ctx, "BTC")
+	assert.NoError(t, err, "Next2 should not error")
+	assert.True(t, ok, "Next2 should return ok=true")
+	assert.Equal(t, float64(101), snap.Price.Last, "second price should be 101")
+	assert.Greater(t, snap.Change.OneHour, 0.0, "OneHour change should be positive")
 
-    _, ok, err = feeder.Next(ctx, "BTC")
-    if err != nil || ok { t.Fatalf("expected eof: ok=%v err=%v", ok, err) }
+	_, ok, err = feeder.Next(ctx, "BTC")
+	assert.NoError(t, err, "Next3 should not error")
+	assert.True(t, ok, "Next3 should return ok=true")
+
+	_, ok, err = feeder.Next(ctx, "BTC")
+	assert.NoError(t, err, "Next4 should not error")
+	assert.False(t, ok, "Next4 should return ok=false at EOF")
 }
-

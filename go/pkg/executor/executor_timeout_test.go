@@ -1,11 +1,12 @@
 package executor
 
 import (
+	"context"
 	"path/filepath"
 	"testing"
 	"time"
 
-	"context"
+	"github.com/stretchr/testify/assert"
 	"nof0-api/pkg/llm"
 )
 
@@ -38,22 +39,17 @@ func TestExecutor_TimeoutHonored(t *testing.T) {
 		DecisionTimeoutRaw:     "20ms",
 		MaxConcurrentDecisions: 1,
 	}
-	if err := cfg.parseDurations(); err != nil {
-		t.Fatalf("parseDurations: %v", err)
-	}
+	err := cfg.parseDurations()
+	assert.NoError(t, err, "parseDurations should not error")
 
 	client := &slowLLM{}
 	templatePath := filepath.Join("..", "..", "etc", "prompts", "executor", "default_prompt.tmpl")
 	exec, err := NewExecutor(cfg, client, templatePath)
-	if err != nil {
-		t.Fatalf("NewExecutor error: %v", err)
-	}
+	assert.NoError(t, err, "NewExecutor should not error")
+	assert.NotNil(t, exec, "executor should not be nil")
+
 	start := time.Now()
 	_, err = exec.GetFullDecision(&Context{CurrentTime: "2025-01-01T00:00:00Z"})
-	if err == nil {
-		t.Fatal("expected timeout error")
-	}
-	if time.Since(start) < 15*time.Millisecond {
-		t.Fatal("timeout not enforced with sufficient delay")
-	}
+	assert.Error(t, err, "GetFullDecision should return timeout error")
+	assert.GreaterOrEqual(t, time.Since(start), 15*time.Millisecond, "timeout should be enforced with sufficient delay")
 }

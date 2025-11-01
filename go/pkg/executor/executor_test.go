@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
 	"nof0-api/pkg/llm"
 )
 
@@ -55,22 +56,18 @@ func TestExecutor_GetFullDecision(t *testing.T) {
 	templatePath := filepath.Join("..", "..", "etc", "prompts", "executor", "default_prompt.tmpl")
 
 	exec, err := NewExecutor(cfg, client, templatePath)
-	if err != nil {
-		t.Fatalf("NewExecutor error: %v", err)
-	}
+	assert.NoError(t, err, "NewExecutor should not error")
+	assert.NotNil(t, exec, "executor should not be nil")
+
 	ctx := &Context{CurrentTime: "2025-01-01T00:00:00Z"}
 	out, err := exec.GetFullDecision(ctx)
-	if err != nil {
-		t.Fatalf("GetFullDecision error: %v", err)
-	}
-	if out == nil || len(out.Decisions) != 1 {
-		t.Fatalf("unexpected decisions: %+v", out)
-	}
+	assert.NoError(t, err, "GetFullDecision should not error")
+	assert.NotNil(t, out, "decision output should not be nil")
+	assert.Len(t, out.Decisions, 1, "should have exactly one decision")
+
 	d := out.Decisions[0]
-	if d.Action != "open_long" || d.Symbol != "BTC" || d.Confidence < 75 {
-		t.Fatalf("mapped decision invalid: %+v", d)
-	}
-	if out.UserPrompt == "" {
-		t.Fatal("expected UserPrompt to be populated")
-	}
+	assert.Equal(t, "open_long", d.Action, "action should be open_long")
+	assert.Equal(t, "BTC", d.Symbol, "symbol should be BTC")
+	assert.GreaterOrEqual(t, d.Confidence, 75, "confidence should be >= 75")
+	assert.NotEmpty(t, out.UserPrompt, "UserPrompt should be populated")
 }

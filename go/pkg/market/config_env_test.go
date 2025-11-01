@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
 	market "nof0-api/pkg/market"
 	_ "nof0-api/pkg/market/exchanges/hyperliquid"
 )
@@ -26,22 +27,16 @@ providers:
     http_timeout: ${HTTP_TOUT}
 `)
 	path := filepath.Join(dir, "market.yaml")
-	if err := os.WriteFile(path, yaml, 0o600); err != nil {
-		t.Fatalf("write: %v", err)
-	}
+	err := os.WriteFile(path, yaml, 0o600)
+	assert.NoError(t, err, "write config should succeed")
 
 	cfg, err := market.LoadConfig(path)
-	if err != nil {
-		t.Fatalf("LoadConfig: %v", err)
-	}
+	assert.NoError(t, err, "LoadConfig should not error")
+	assert.NotNil(t, cfg, "config should not be nil")
+
 	p := cfg.Providers["hp"]
-	if p == nil {
-		t.Fatalf("provider hp missing")
-	}
-	if p.BaseURL != "https://api.hyperliquid.test/info" {
-		t.Fatalf("BaseURL not expanded, got %q", p.BaseURL)
-	}
-	if p.Timeout.String() != "9s" || p.HTTPTimeout.String() != "13s" {
-		t.Fatalf("durations not parsed, timeout=%s http_timeout=%s", p.Timeout, p.HTTPTimeout)
-	}
+	assert.NotNil(t, p, "provider hp should exist")
+	assert.Equal(t, "https://api.hyperliquid.test/info", p.BaseURL, "BaseURL should be expanded from env var")
+	assert.Equal(t, "9s", p.Timeout.String(), "Timeout should be parsed as 9s")
+	assert.Equal(t, "13s", p.HTTPTimeout.String(), "HTTPTimeout should be parsed as 13s")
 }

@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/dnaeon/go-vcr/recorder"
+	"github.com/stretchr/testify/assert"
 )
 
 // This test uses go-vcr to record/replay a real GetMarketInfo call.
@@ -19,28 +20,21 @@ func TestClient_GetMarketInfo_Recorded(t *testing.T) {
 			t.Skipf("cassette missing; set RECORD_CASSETTES=1 to record: %s", cassette)
 		}
 		// Ensure parent directory exists for recording
-		if err := os.MkdirAll(filepath.Dir(cassette), 0o755); err != nil {
-			t.Fatalf("mkdir cassettes dir: %v", err)
-		}
+		err := os.MkdirAll(filepath.Dir(cassette), 0o755)
+		assert.NoError(t, err, "mkdir cassettes dir should succeed")
 	}
 
 	r, err := recorder.New(cassette)
-	if err != nil {
-		t.Fatalf("recorder.New: %v", err)
-	}
+	assert.NoError(t, err, "recorder.New should not error")
+	assert.NotNil(t, r, "recorder should not be nil")
 	defer func() { _ = r.Stop() }()
 
 	httpClient := &http.Client{Transport: r}
 	client := NewClient(WithHTTPClient(httpClient))
 	ctx := context.Background()
 	info, err := client.GetMarketInfo(ctx, "btc")
-	if err != nil {
-		t.Fatalf("GetMarketInfo: %v", err)
-	}
-	if info.Symbol == "" {
-		t.Fatalf("empty symbol in response")
-	}
-	if info.MidPrice <= 0 {
-		t.Fatalf("non-positive mid price: %v", info.MidPrice)
-	}
+	assert.NoError(t, err, "GetMarketInfo should not error")
+	assert.NotNil(t, info, "info should not be nil")
+	assert.NotEmpty(t, info.Symbol, "symbol should not be empty")
+	assert.Greater(t, info.MidPrice, 0.0, "mid price should be positive")
 }

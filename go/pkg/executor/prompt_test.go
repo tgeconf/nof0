@@ -2,8 +2,9 @@ package executor
 
 import (
 	"path/filepath"
-	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
 func TestPromptRenderer(t *testing.T) {
@@ -19,9 +20,8 @@ func TestPromptRenderer(t *testing.T) {
 		MaxConcurrentDecisions: 1,
 	}
 	renderer, err := NewPromptRenderer(cfg, templatePath)
-	if err != nil {
-		t.Fatalf("NewPromptRenderer error: %v", err)
-	}
+	assert.NoError(t, err, "NewPromptRenderer should not error")
+	assert.NotNil(t, renderer, "renderer should not be nil")
 
 	out, err := renderer.Render(PromptInputs{
 		CurrentTime:     "2025-11-01T08:00:00Z",
@@ -34,9 +34,8 @@ func TestPromptRenderer(t *testing.T) {
 		CandidateCoins:  "- BTC\n- ETH\n- SOL",
 		MarketSnapshots: `{"BTC":{"price":64000}}`,
 	})
-	if err != nil {
-		t.Fatalf("Render error: %v", err)
-	}
+	assert.NoError(t, err, "Render should not error")
+	assert.NotEmpty(t, out, "rendered output should not be empty")
 
 	expectations := []string{
 		"TIMESTAMP: 2025-11-01T08:00:00Z",
@@ -51,16 +50,13 @@ func TestPromptRenderer(t *testing.T) {
 		"minimum confidence 75",
 	}
 	for _, substr := range expectations {
-		if !strings.Contains(out, substr) {
-			t.Fatalf("rendered prompt missing substring %q\n--- prompt ---\n%s", substr, out)
-		}
+		assert.Contains(t, out, substr, "rendered prompt should contain %q", substr)
 	}
 }
 
 func TestPromptRendererNilConfig(t *testing.T) {
-	if _, err := NewPromptRenderer(nil, ""); err == nil {
-		t.Fatal("expected error for nil config")
-	}
+	_, err := NewPromptRenderer(nil, "")
+	assert.Error(t, err, "NewPromptRenderer should error for nil config")
 }
 
 func TestPromptRendererEmptyPath(t *testing.T) {
@@ -74,7 +70,6 @@ func TestPromptRendererEmptyPath(t *testing.T) {
 		DecisionTimeoutRaw:     "60s",
 		MaxConcurrentDecisions: 1,
 	}
-	if _, err := NewPromptRenderer(cfg, " "); err == nil {
-		t.Fatal("expected error for empty template path")
-	}
+	_, err := NewPromptRenderer(cfg, " ")
+	assert.Error(t, err, "NewPromptRenderer should error for empty template path")
 }

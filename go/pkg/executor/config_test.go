@@ -3,8 +3,9 @@ package executor
 import (
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
 func TestLoadConfig(t *testing.T) {
@@ -27,36 +28,24 @@ overrides:
     min_confidence: 80
 `
 	path := filepath.Join(dir, "executor.yaml")
-	if err := os.WriteFile(path, []byte(configYAML), 0o600); err != nil {
-		t.Fatalf("write config: %v", err)
-	}
+	err := os.WriteFile(path, []byte(configYAML), 0o600)
+	assert.NoError(t, err, "should write config file successfully")
 
 	t.Setenv("EXEC_SIGNING_KEY", " secret ")
 	cfg, err := LoadConfig(path)
-	if err != nil {
-		t.Fatalf("LoadConfig error: %v", err)
-	}
-	if cfg.DecisionInterval.String() != "2m0s" {
-		t.Fatalf("DecisionInterval = %s, want 2m0s", cfg.DecisionInterval)
-	}
-	if cfg.DecisionTimeout.String() != "45s" {
-		t.Fatalf("DecisionTimeout = %s, want 45s", cfg.DecisionTimeout)
-	}
-	if cfg.MaxConcurrentDecisions != 2 {
-		t.Fatalf("MaxConcurrentDecisions = %d, want 2", cfg.MaxConcurrentDecisions)
-	}
-	if cfg.SigningKey != "secret" {
-		t.Fatalf("SigningKey not trimmed/expanded: %q", cfg.SigningKey)
-	}
-	if cfg.Overrides["trader_alpha"].MinConfidence == nil || *cfg.Overrides["trader_alpha"].MinConfidence != 80 {
-		t.Fatalf("Override min_confidence not parsed: %+v", cfg.Overrides["trader_alpha"])
-	}
+	assert.NoError(t, err, "LoadConfig should not error")
+	assert.NotNil(t, cfg, "config should not be nil")
+
+	assert.Equal(t, "2m0s", cfg.DecisionInterval.String(), "DecisionInterval should be parsed correctly")
+	assert.Equal(t, "45s", cfg.DecisionTimeout.String(), "DecisionTimeout should be parsed correctly")
+	assert.Equal(t, 2, cfg.MaxConcurrentDecisions, "MaxConcurrentDecisions should be 2")
+	assert.Equal(t, "secret", cfg.SigningKey, "SigningKey should be trimmed and expanded")
+
+	assert.NotNil(t, cfg.Overrides["trader_alpha"].MinConfidence, "Override MinConfidence should not be nil")
+	assert.Equal(t, 80, *cfg.Overrides["trader_alpha"].MinConfidence, "Override MinConfidence should be 80")
+
 	expectedIDs := []string{"trader_alpha", "trader_beta"}
-	for i, id := range expectedIDs {
-		if cfg.AllowedTraderIDs[i] != id {
-			t.Fatalf("AllowedTraderIDs[%d] = %q, want %q", i, cfg.AllowedTraderIDs[i], id)
-		}
-	}
+	assert.Equal(t, expectedIDs, cfg.AllowedTraderIDs, "AllowedTraderIDs should match expected list")
 }
 
 func TestLoadConfigInvalidMinRiskReward(t *testing.T) {
@@ -69,14 +58,12 @@ min_risk_reward: -1
 max_positions: 4
 `
 	path := filepath.Join(dir, "executor.yaml")
-	if err := os.WriteFile(path, []byte(configYAML), 0o600); err != nil {
-		t.Fatalf("write config: %v", err)
-	}
+	err := os.WriteFile(path, []byte(configYAML), 0o600)
+	assert.NoError(t, err, "should write config file successfully")
 
-	_, err := LoadConfig(path)
-	if err == nil || !strings.Contains(err.Error(), "min_risk_reward") {
-		t.Fatalf("expected min_risk_reward validation error, got %v", err)
-	}
+	_, err = LoadConfig(path)
+	assert.Error(t, err, "LoadConfig should error for invalid min_risk_reward")
+	assert.Contains(t, err.Error(), "min_risk_reward", "error should mention min_risk_reward")
 }
 
 func TestLoadConfigDuplicateTraderIDs(t *testing.T) {
@@ -92,14 +79,12 @@ allowed_trader_ids:
   - trader_alpha
 `
 	path := filepath.Join(dir, "executor.yaml")
-	if err := os.WriteFile(path, []byte(configYAML), 0o600); err != nil {
-		t.Fatalf("write config: %v", err)
-	}
+	err := os.WriteFile(path, []byte(configYAML), 0o600)
+	assert.NoError(t, err, "should write config file successfully")
 
-	_, err := LoadConfig(path)
-	if err == nil || !strings.Contains(err.Error(), "duplicate") {
-		t.Fatalf("expected duplicate trader id error, got %v", err)
-	}
+	_, err = LoadConfig(path)
+	assert.Error(t, err, "LoadConfig should error for duplicate trader IDs")
+	assert.Contains(t, err.Error(), "duplicate", "error should mention duplicate")
 }
 
 func TestValidateFails(t *testing.T) {
@@ -114,15 +99,10 @@ decision_interval: 1s
 decision_timeout: 1s
 `
 	path := filepath.Join(dir, "bad.yaml")
-	if err := os.WriteFile(path, []byte(configYAML), 0o600); err != nil {
-		t.Fatalf("write config: %v", err)
-	}
+	err := os.WriteFile(path, []byte(configYAML), 0o600)
+	assert.NoError(t, err, "should write config file successfully")
 
-	_, err := LoadConfig(path)
-	if err == nil {
-		t.Fatal("expected error, got nil")
-	}
-	if !strings.Contains(err.Error(), "btc_eth_leverage") {
-		t.Fatalf("unexpected error: %v", err)
-	}
+	_, err = LoadConfig(path)
+	assert.Error(t, err, "LoadConfig should error for invalid config")
+	assert.Contains(t, err.Error(), "btc_eth_leverage", "error should mention btc_eth_leverage")
 }

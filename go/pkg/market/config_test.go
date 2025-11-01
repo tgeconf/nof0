@@ -3,9 +3,9 @@ package market_test
 import (
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
 	market "nof0-api/pkg/market"
 	_ "nof0-api/pkg/market/exchanges/hyperliquid"
 )
@@ -23,28 +23,18 @@ providers:
     max_retries: 4
 `
 	path := filepath.Join(dir, "market.yaml")
-	if err := os.WriteFile(path, []byte(configYAML), 0o600); err != nil {
-		t.Fatalf("write config: %v", err)
-	}
+	err := os.WriteFile(path, []byte(configYAML), 0o600)
+	assert.NoError(t, err, "write config should succeed")
 
 	cfg, err := market.LoadConfig(path)
-	if err != nil {
-		t.Fatalf("LoadConfig error: %v", err)
-	}
-	if cfg.Default != "hyperliquid" {
-		t.Fatalf("unexpected default: %s", cfg.Default)
-	}
+	assert.NoError(t, err, "LoadConfig should not error")
+	assert.NotNil(t, cfg, "config should not be nil")
+	assert.Equal(t, "hyperliquid", cfg.Default, "default should be hyperliquid")
 
 	providers, err := cfg.BuildProviders()
-	if err != nil {
-		t.Fatalf("BuildProviders error: %v", err)
-	}
-	if len(providers) != 1 {
-		t.Fatalf("expected 1 provider, got %d", len(providers))
-	}
-	if _, ok := providers["hyperliquid"]; !ok {
-		t.Fatalf("provider map missing hyperliquid")
-	}
+	assert.NoError(t, err, "BuildProviders should not error")
+	assert.Len(t, providers, 1, "should have 1 provider")
+	assert.Contains(t, providers, "hyperliquid", "provider map should contain hyperliquid")
 }
 
 func TestMarketConfigInvalidType(t *testing.T) {
@@ -55,12 +45,10 @@ providers:
     type: foobar
 `
 	path := filepath.Join(dir, "market.yaml")
-	if err := os.WriteFile(path, []byte(configYAML), 0o600); err != nil {
-		t.Fatalf("write config: %v", err)
-	}
+	err := os.WriteFile(path, []byte(configYAML), 0o600)
+	assert.NoError(t, err, "write config should succeed")
 
-	_, err := market.LoadConfig(path)
-	if err == nil || !strings.Contains(err.Error(), "unsupported") {
-		t.Fatalf("expected unsupported type error, got %v", err)
-	}
+	_, err = market.LoadConfig(path)
+	assert.Error(t, err, "LoadConfig should error for unsupported type")
+	assert.Contains(t, err.Error(), "unsupported", "error should mention unsupported")
 }

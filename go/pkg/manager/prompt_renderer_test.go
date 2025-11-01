@@ -2,17 +2,17 @@ package manager
 
 import (
 	"path/filepath"
-	"strings"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/assert"
 )
 
 func TestManagerPromptRenderer(t *testing.T) {
 	templatePath := filepath.Join("..", "..", "etc", "prompts", "manager", "aggressive_short.tmpl")
 	renderer, err := NewPromptRenderer(templatePath)
-	if err != nil {
-		t.Fatalf("NewPromptRenderer error: %v", err)
-	}
+	assert.NoError(t, err, "NewPromptRenderer should not error")
+	assert.NotNil(t, renderer, "renderer should not be nil")
 
 	trader := &TraderConfig{
 		ID:               "trader_aggressive_short",
@@ -40,9 +40,8 @@ func TestManagerPromptRenderer(t *testing.T) {
 		Trader:      trader,
 		ContextJSON: `{"market":"bearish"}`,
 	})
-	if err != nil {
-		t.Fatalf("Render error: %v", err)
-	}
+	assert.NoError(t, err, "Render should not error")
+	assert.NotEmpty(t, out, "rendered output should not be empty")
 
 	expectations := []string{
 		"Trader ID: trader_aggressive_short",
@@ -53,19 +52,16 @@ func TestManagerPromptRenderer(t *testing.T) {
 		`{"market":"bearish"}`,
 	}
 	for _, substr := range expectations {
-		if !strings.Contains(out, substr) {
-			t.Fatalf("rendered prompt missing substring %q\n--- prompt ---\n%s", substr, out)
-		}
+		assert.Contains(t, out, substr, "rendered prompt should contain %q", substr)
 	}
 }
 
 func TestManagerPromptRendererMissingTrader(t *testing.T) {
 	templatePath := filepath.Join("..", "..", "etc", "prompts", "manager", "aggressive_short.tmpl")
 	renderer, err := NewPromptRenderer(templatePath)
-	if err != nil {
-		t.Fatalf("NewPromptRenderer error: %v", err)
-	}
-	if _, err := renderer.Render(ManagerPromptInputs{}); err == nil {
-		t.Fatal("expected error for missing trader data")
-	}
+	assert.NoError(t, err, "NewPromptRenderer should not error")
+	assert.NotNil(t, renderer, "renderer should not be nil")
+
+	_, err = renderer.Render(ManagerPromptInputs{})
+	assert.Error(t, err, "Render should error for missing trader data")
 }

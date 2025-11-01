@@ -3,23 +3,23 @@ package manager
 import (
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
 func TestLoadConfig(t *testing.T) {
 	dir := t.TempDir()
 	managerPromptAgg := filepath.Join(dir, "prompts/manager/aggressive_short.tmpl")
 	managerPromptCon := filepath.Join(dir, "prompts/manager/conservative_long.tmpl")
-	if err := os.MkdirAll(filepath.Dir(managerPromptAgg), 0o700); err != nil {
-		t.Fatalf("mkdir prompts: %v", err)
-	}
-	if err := os.WriteFile(managerPromptAgg, []byte("aggressive short prompt"), 0o600); err != nil {
-		t.Fatalf("write aggressive prompt: %v", err)
-	}
-	if err := os.WriteFile(managerPromptCon, []byte("conservative long prompt"), 0o600); err != nil {
-		t.Fatalf("write conservative prompt: %v", err)
-	}
+	err := os.MkdirAll(filepath.Dir(managerPromptAgg), 0o700)
+	assert.NoError(t, err, "mkdir prompts should succeed")
+
+	err = os.WriteFile(managerPromptAgg, []byte("aggressive short prompt"), 0o600)
+	assert.NoError(t, err, "write aggressive prompt should succeed")
+
+	err = os.WriteFile(managerPromptCon, []byte("conservative long prompt"), 0o600)
+	assert.NoError(t, err, "write conservative prompt should succeed")
 
 	configYAML := `
 manager:
@@ -74,38 +74,27 @@ monitoring:
   metrics_exporter: prometheus
 `
 	path := filepath.Join(dir, "manager.yaml")
-	if err := os.WriteFile(path, []byte(configYAML), 0o600); err != nil {
-		t.Fatalf("write manager config: %v", err)
-	}
+	err = os.WriteFile(path, []byte(configYAML), 0o600)
+	assert.NoError(t, err, "write manager config should succeed")
 
 	cfg, err := LoadConfig(path)
-	if err != nil {
-		t.Fatalf("LoadConfig error: %v", err)
-	}
-	if cfg.Manager.RebalanceInterval.String() != "2h0m0s" {
-		t.Fatalf("RebalanceInterval = %s", cfg.Manager.RebalanceInterval)
-	}
-	if cfg.Traders[0].DecisionInterval.String() != "4m0s" {
-		t.Fatalf("DecisionInterval = %s", cfg.Traders[0].DecisionInterval)
-	}
-	if cfg.Traders[0].ExchangeProvider != "hyperliquid_primary" {
-		t.Fatalf("ExchangeProvider not trimmed: %q", cfg.Traders[0].ExchangeProvider)
-	}
-	if cfg.Traders[0].MarketProvider != "hl_market" {
-		t.Fatalf("MarketProvider not trimmed: %q", cfg.Traders[0].MarketProvider)
-	}
+	assert.NoError(t, err, "LoadConfig should not error")
+	assert.NotNil(t, cfg, "config should not be nil")
+
+	assert.Equal(t, "2h0m0s", cfg.Manager.RebalanceInterval.String(), "RebalanceInterval should be parsed correctly")
+	assert.Equal(t, "4m0s", cfg.Traders[0].DecisionInterval.String(), "DecisionInterval should be parsed correctly")
+	assert.Equal(t, "hyperliquid_primary", cfg.Traders[0].ExchangeProvider, "ExchangeProvider should be trimmed")
+	assert.Equal(t, "hl_market", cfg.Traders[0].MarketProvider, "MarketProvider should be trimmed")
+
 	wantStatePath := filepath.Join(dir, "state/manager.json")
-	if cfg.Manager.StateStoragePath != wantStatePath {
-		t.Fatalf("StateStoragePath = %q, want %q", cfg.Manager.StateStoragePath, wantStatePath)
-	}
+	assert.Equal(t, wantStatePath, cfg.Manager.StateStoragePath, "StateStoragePath should match expected path")
 }
 
 func TestAllocationValidation(t *testing.T) {
 	dir := t.TempDir()
 	promptPath := filepath.Join(dir, "prompt.tmpl")
-	if err := os.WriteFile(promptPath, []byte("generic prompt"), 0o600); err != nil {
-		t.Fatalf("write prompt: %v", err)
-	}
+	err := os.WriteFile(promptPath, []byte("generic prompt"), 0o600)
+	assert.NoError(t, err, "write prompt should succeed")
 
 	configYAML := `
 manager:
@@ -160,17 +149,12 @@ monitoring:
   metrics_exporter: prometheus
 `
 	path := filepath.Join(dir, "bad.yaml")
-	if err := os.WriteFile(path, []byte(configYAML), 0o600); err != nil {
-		t.Fatalf("write config: %v", err)
-	}
+	err = os.WriteFile(path, []byte(configYAML), 0o600)
+	assert.NoError(t, err, "write config should succeed")
 
-	_, err := LoadConfig(path)
-	if err == nil {
-		t.Fatal("expected error but got nil")
-	}
-	if !strings.Contains(err.Error(), "allocation") {
-		t.Fatalf("unexpected error: %v", err)
-	}
+	_, err = LoadConfig(path)
+	assert.Error(t, err, "LoadConfig should error for invalid allocation")
+	assert.Contains(t, err.Error(), "allocation", "error should mention allocation")
 }
 
 func TestLoadConfigMissingPrompt(t *testing.T) {
@@ -209,22 +193,19 @@ monitoring:
   metrics_exporter: prometheus
 `
 	path := filepath.Join(dir, "bad.yaml")
-	if err := os.WriteFile(path, []byte(configYAML), 0o600); err != nil {
-		t.Fatalf("write config: %v", err)
-	}
+	err := os.WriteFile(path, []byte(configYAML), 0o600)
+	assert.NoError(t, err, "write config should succeed")
 
-	_, err := LoadConfig(path)
-	if err == nil || !strings.Contains(err.Error(), "prompt_template") {
-		t.Fatalf("expected prompt_template error, got %v", err)
-	}
+	_, err = LoadConfig(path)
+	assert.Error(t, err, "LoadConfig should error for missing prompt template")
+	assert.Contains(t, err.Error(), "prompt_template", "error should mention prompt_template")
 }
 
 func TestMissingMarketProvider(t *testing.T) {
 	dir := t.TempDir()
 	promptPath := filepath.Join(dir, "prompt.tmpl")
-	if err := os.WriteFile(promptPath, []byte("generic prompt"), 0o600); err != nil {
-		t.Fatalf("write prompt: %v", err)
-	}
+	err := os.WriteFile(promptPath, []byte("generic prompt"), 0o600)
+	assert.NoError(t, err, "write prompt should succeed")
 
 	configYAML := `
 manager:
@@ -259,12 +240,10 @@ monitoring:
   metrics_exporter: prometheus
 `
 	path := filepath.Join(dir, "bad.yaml")
-	if err := os.WriteFile(path, []byte(configYAML), 0o600); err != nil {
-		t.Fatalf("write config: %v", err)
-	}
+	err = os.WriteFile(path, []byte(configYAML), 0o600)
+	assert.NoError(t, err, "write config should succeed")
 
-	_, err := LoadConfig(path)
-	if err == nil || !strings.Contains(err.Error(), "market_provider") {
-		t.Fatalf("expected market_provider error, got %v", err)
-	}
+	_, err = LoadConfig(path)
+	assert.Error(t, err, "LoadConfig should error for missing market provider")
+	assert.Contains(t, err.Error(), "market_provider", "error should mention market_provider")
 }

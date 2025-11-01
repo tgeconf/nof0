@@ -3,9 +3,9 @@ package exchange_test
 import (
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
 	exchange "nof0-api/pkg/exchange"
 	_ "nof0-api/pkg/exchange/hyperliquid"
 )
@@ -30,28 +30,18 @@ providers:
     vault_address: 0x0000000000000000000000000000000000000000
 `
 	path := filepath.Join(dir, "exchange.yaml")
-	if err := os.WriteFile(path, []byte(configYAML), 0o600); err != nil {
-		t.Fatalf("write config: %v", err)
-	}
+	err := os.WriteFile(path, []byte(configYAML), 0o600)
+	assert.NoError(t, err, "write config should succeed")
 
 	cfg, err := exchange.LoadConfig(path)
-	if err != nil {
-		t.Fatalf("LoadConfig error: %v", err)
-	}
-	if cfg.Default != "hyperliquid_main" {
-		t.Fatalf("unexpected default: %s", cfg.Default)
-	}
+	assert.NoError(t, err, "LoadConfig should not error")
+	assert.NotNil(t, cfg, "config should not be nil")
+	assert.Equal(t, "hyperliquid_main", cfg.Default, "default should be hyperliquid_main")
 
 	providers, err := cfg.BuildProviders()
-	if err != nil {
-		t.Fatalf("BuildProviders error: %v", err)
-	}
-	if len(providers) != 1 {
-		t.Fatalf("expected 1 provider, got %d", len(providers))
-	}
-	if _, ok := providers["hyperliquid_main"]; !ok {
-		t.Fatalf("provider map missing hyperliquid_main")
-	}
+	assert.NoError(t, err, "BuildProviders should not error")
+	assert.Len(t, providers, 1, "should have 1 provider")
+	assert.Contains(t, providers, "hyperliquid_main", "provider map should contain hyperliquid_main")
 }
 
 func TestLoadConfigRequiresPrivateKey(t *testing.T) {
@@ -62,12 +52,10 @@ providers:
     type: hyperliquid
 `
 	path := filepath.Join(dir, "exchange.yaml")
-	if err := os.WriteFile(path, []byte(configYAML), 0o600); err != nil {
-		t.Fatalf("write config: %v", err)
-	}
+	err := os.WriteFile(path, []byte(configYAML), 0o600)
+	assert.NoError(t, err, "write config should succeed")
 
-	_, err := exchange.LoadConfig(path)
-	if err == nil || !strings.Contains(err.Error(), "private_key") {
-		t.Fatalf("expected private_key error, got %v", err)
-	}
+	_, err = exchange.LoadConfig(path)
+	assert.Error(t, err, "LoadConfig should error for missing private_key")
+	assert.Contains(t, err.Error(), "private_key", "error should mention private_key")
 }
