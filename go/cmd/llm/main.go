@@ -154,15 +154,62 @@ func adaptManagerConfig(cfg *managerpkg.Config, totalEquity float64, allowed []s
 	return cfg.Validate()
 }
 
+func applyExecutorPromptProfile(cfg *managerpkg.Config, profile string) error {
+	if cfg == nil {
+		return fmt.Errorf("manager config is nil")
+	}
+	profile = strings.ToLower(strings.TrimSpace(profile))
+	if profile == "" || profile == "default" {
+		return nil
+	}
+
+	var (
+		rel             string
+		fastMinRR       = 1.5
+		fastMinConf     = 60
+		fastMaxPosition = 40.0
+	)
+	switch profile {
+	case "fast", "test", "fast-signal":
+		rel = "etc/prompts/executor/fast_signal_prompt.tmpl"
+	default:
+		return fmt.Errorf("unknown executor prompt profile %q", profile)
+	}
+
+	path, err := confkit.ProjectPath(rel)
+	if err != nil {
+		return fmt.Errorf("resolve prompt profile path: %w", err)
+	}
+	if _, err := os.Stat(path); err != nil {
+		return fmt.Errorf("prompt profile %q missing template %s: %w", profile, path, err)
+	}
+	for i := range cfg.Traders {
+		cfg.Traders[i].ExecutorTemplate = path
+		// Relax risk parameters so fast profile prompts pass validation easier.
+		if cfg.Traders[i].RiskParams.MinRiskRewardRatio > fastMinRR {
+			cfg.Traders[i].RiskParams.MinRiskRewardRatio = fastMinRR
+		}
+		if cfg.Traders[i].RiskParams.MinConfidence > fastMinConf {
+			cfg.Traders[i].RiskParams.MinConfidence = fastMinConf
+		}
+		if cfg.Traders[i].RiskParams.MaxPositionSizeUSD <= 0 || cfg.Traders[i].RiskParams.MaxPositionSizeUSD > fastMaxPosition {
+			cfg.Traders[i].RiskParams.MaxPositionSizeUSD = fastMaxPosition
+		}
+	}
+	logx.Infof("executor prompt profile override active: %s → %s", profile, path)
+	return nil
+}
+
 func main() {
 	var (
-		exchangePath = flag.String("exchange-config", "etc/exchange.yaml", "path to exchange provider configuration")
-		marketPath   = flag.String("market-config", "etc/market.yaml", "path to market provider configuration")
-		llmPath      = flag.String("llm-config", "etc/llm.yaml", "path to llm client configuration")
-		managerPath  = flag.String("manager-config", "etc/manager.yaml", "path to manager configuration")
-		appConfig    = flag.String("app-config", "etc/nof0.yaml", "path to application config for summary logging")
-		allowedRaw   = flag.String("symbols", "BTC,ETH", "comma-separated list of tradable symbols")
-		totalEquity  = flag.Float64("equity", 100.0, "total deployable equity in USD")
+		exchangePath  = flag.String("exchange-config", "etc/exchange.yaml", "path to exchange provider configuration")
+		marketPath    = flag.String("market-config", "etc/market.yaml", "path to market provider configuration")
+		llmPath       = flag.String("llm-config", "etc/llm.yaml", "path to llm client configuration")
+		managerPath   = flag.String("manager-config", "etc/manager.yaml", "path to manager configuration")
+		appConfig     = flag.String("app-config", "etc/nof0.yaml", "path to application config for summary logging")
+		allowedRaw    = flag.String("symbols", "BTC,ETH", "comma-separated list of tradable symbols")
+		totalEquity   = flag.Float64("equity", 100.0, "total deployable equity in USD")
+		promptProfile = flag.String("executor-prompt-profile", "default", "executor prompt profile (default|fast)")
 	)
 	flag.Parse()
 	logx.MustSetup(logx.LogConf{})
@@ -224,6 +271,9 @@ func main() {
 	managerCfg, err := managerpkg.LoadConfig(*managerPath)
 	if err != nil {
 		fatalf("load manager config: %v", err)
+	}
+	if err := applyExecutorPromptProfile(managerCfg, *promptProfile); err != nil {
+		fatalf("apply executor prompt profile: %v", err)
 	}
 	if err := adaptManagerConfig(managerCfg, *totalEquity, allowedSymbols); err != nil {
 		fatalf("adapt manager config: %v", err)
