@@ -406,6 +406,7 @@ func (c *Client) doExchangeRequest(ctx context.Context, action interface{}, resu
 	if err != nil {
 		return fmt.Errorf("hyperliquid: encode exchange request: %w", err)
 	}
+	c.logf("hyperliquid: exchange request payload=%s", string(payload))
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, c.exchangeURL, bytes.NewReader(payload))
 	if err != nil {
 		return fmt.Errorf("hyperliquid: build exchange request: %w", err)
@@ -426,6 +427,7 @@ func (c *Client) doExchangeRequest(ctx context.Context, action interface{}, resu
 		return fmt.Errorf("hyperliquid: read exchange response: %w", readErr)
 	}
 	if resp.StatusCode < http.StatusOK || resp.StatusCode >= 300 {
+		c.logf("hyperliquid: exchange error status=%d body=%s", resp.StatusCode, string(body))
 		return fmt.Errorf("hyperliquid: exchange http status %d: %s", resp.StatusCode, string(body))
 	}
 	if result != nil {

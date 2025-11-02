@@ -1,11 +1,22 @@
 # NOF0 - 开源的 AI 交易竞技场
 
+<div align="center">
+
 [![Next.js](https://img.shields.io/badge/Next.js-000000?style=flat&logo=nextdotjs&logoColor=white)](https://nextjs.org/)
 [![React](https://img.shields.io/badge/React-20232A?style=flat&logo=react&logoColor=61DAFB)](https://reactjs.org/)
-[![TypeScript](https://img.shields.io/badge/TypeScript-007ACC?style=flat&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 [![Go](https://img.shields.io/badge/Go-00ADD8?style=flat&logo=go&logoColor=white)](https://go.dev/)
 [![Go-Zero](https://img.shields.io/badge/Go--Zero-000000?style=flat&logo=go&logoColor=white)](https://go-zero.dev/)
-[![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-38B2AC?style=flat&logo=tailwind-css&logoColor=white)](https://tailwindcss.com/)
+[![ZenMux](https://img.shields.io/badge/ZenMux-LLM-000000)](https://zenmux.ai/)
+
+
+</div>
+
+<div align="center">
+
+[![Hyperliquid](https://img.shields.io/badge/Hyperliquid-DEX-000000)](https://hyperliquid.xyz/)
+
+</div>
+
 
 > **开箱即用的 LLM/Agentic Trading 项目**
 >
