@@ -17,6 +17,14 @@
 
 </div>
 
+<div align="center">
+
+[![GitHub - nof0](https://img.shields.io/badge/GitHub-nof0-0A1643?style=flat&logo=github&logoColor=white)](https://github.com/wquguru/nof0)
+[![Follow @wquguru](https://img.shields.io/badge/Follow-@wquguru-1DA1F2?style=flat&logo=x&logoColor=white)](https://twitter.com/intent/follow?screen_name=wquguru)
+[![Join Telegram Group](https://img.shields.io/badge/Telegram-nof0__ai-26A5E4?style=flat&logo=telegram&logoColor=white)](https://t.me/nof0_ai)
+
+</div>
+
 
 > **开箱即用的 LLM/Agentic Trading 项目**
 >
