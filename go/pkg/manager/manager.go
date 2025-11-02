@@ -471,6 +471,8 @@ func (m *Manager) ExecuteDecision(trader *VirtualTrader, decision *executorpkg.D
 		return fmt.Errorf("manager: invalid position size for %s: qty=%.6f", decision.Symbol, qty)
 	}
 	isBuy := decision.Action == "open_long"
+	priceStr := fmt.Sprintf("%.8f", price)
+	sizeStr := fmt.Sprintf("%.8f", qty)
 
 	switch trader.OrderStyle {
 	case OrderStyleMarketIOC:
@@ -484,13 +486,17 @@ func (m *Manager) ExecuteDecision(trader *VirtualTrader, decision *executorpkg.D
 		if !ok {
 			return fmt.Errorf("manager: trader %s order_style=market_ioc unsupported by exchange provider", trader.ID)
 		}
-		if _, err := execProvider.IOCMarket(ctx, decision.Symbol, isBuy, qty, slippage, false); err != nil {
+		logx.WithContext(ctx).Infof(
+			"manager: trader %s prepared market_ioc order symbol=%s is_buy=%t raw_price=%.8f raw_qty=%.8f asset_idx=%d leverage=%d",
+			trader.ID, decision.Symbol, isBuy, price, qty, assetIdx, lev,
+		)
+		resp, err := execProvider.IOCMarket(ctx, decision.Symbol, isBuy, qty, slippage, false)
+		if err != nil {
 			return fmt.Errorf("manager: market_ioc order %s %s: %w", decision.Symbol, decision.Action, err)
 		}
-		logx.Infof("manager: trader %s submitted market_ioc order symbol=%s notional=%.2f usd qty=%.6f slippage_bps=%.2f", trader.ID, decision.Symbol, decision.PositionSizeUSD, qty, trader.MarketIOCSlippageBps)
+		summary := summarizeOrderResponse(resp)
+		logx.Infof("manager: trader %s submitted market_ioc order symbol=%s notional=%.2f usd qty=%.6f slippage_bps=%.2f response=%s", trader.ID, decision.Symbol, decision.PositionSizeUSD, qty, trader.MarketIOCSlippageBps, summary)
 	case OrderStyleLimitIOC, "":
-		priceStr := fmt.Sprintf("%.8f", price)
-		sizeStr := fmt.Sprintf("%.8f", qty)
 		if p, ok := trader.ExchangeProvider.(interface {
 			FormatPrice(context.Context, string, float64) (string, error)
 		}); ok {
@@ -510,11 +516,6 @@ func (m *Manager) ExecuteDecision(trader *VirtualTrader, decision *executorpkg.D
 			}
 		}
 
-		logx.WithContext(ctx).Infof(
-			"manager: trader %s prepared order symbol=%s is_buy=%t raw_price=%.8f price_str=%s raw_qty=%.8f size_str=%s asset_idx=%d leverage=%d",
-			trader.ID, decision.Symbol, isBuy, price, priceStr, qty, sizeStr, assetIdx, lev,
-		)
-
 		cloid := buildCloid(trader.ID, decision.Symbol, decision.Action, qty, time.Now())
 		order := exchange.Order{
 			Asset:      assetIdx,
@@ -525,10 +526,16 @@ func (m *Manager) ExecuteDecision(trader *VirtualTrader, decision *executorpkg.D
 			OrderType:  exchange.OrderType{Limit: &exchange.LimitOrderType{TIF: "Ioc"}},
 			Cloid:      cloid,
 		}
-		if _, err := trader.ExchangeProvider.PlaceOrder(ctx, order); err != nil {
+		logx.WithContext(ctx).Infof(
+			"manager: trader %s prepared limit_ioc order symbol=%s is_buy=%t raw_price=%.8f price_str=%s raw_qty=%.8f size_str=%s asset_idx=%d leverage=%d",
+			trader.ID, decision.Symbol, isBuy, price, priceStr, qty, sizeStr, assetIdx, lev,
+		)
+		resp, err := trader.ExchangeProvider.PlaceOrder(ctx, order)
+		if err != nil {
 			return fmt.Errorf("manager: place order %s %s: %w", decision.Symbol, decision.Action, err)
 		}
-		logx.Infof("manager: trader %s submitted limit_ioc order symbol=%s notional=%.2f usd qty=%.6f cloid=%s", trader.ID, decision.Symbol, decision.PositionSizeUSD, qty, cloid)
+		summary := summarizeOrderResponse(resp)
+		logx.Infof("manager: trader %s submitted limit_ioc order symbol=%s notional=%.2f usd qty=%.6f cloid=%s response=%s", trader.ID, decision.Symbol, decision.PositionSizeUSD, qty, cloid, summary)
 	default:
 		return fmt.Errorf("manager: trader %s unsupported order_style=%s", trader.ID, trader.OrderStyle)
 	}
@@ -629,6 +636,35 @@ func isBTCorETH(symbol string) bool {
 	default:
 		return false
 	}
+}
+
+func summarizeOrderResponse(resp *exchange.OrderResponse) string {
+	if resp == nil {
+		return "status=<nil>"
+	}
+	details := make([]string, 0, len(resp.Response.Data.Statuses)+1)
+	for i, st := range resp.Response.Data.Statuses {
+		switch {
+		case st.Error != "":
+			details = append(details, fmt.Sprintf("[%d]error=%s", i, st.Error))
+		case st.Filled != nil:
+			details = append(details, fmt.Sprintf("[%d]filled oid=%d total_sz=%s avg_px=%s", i, st.Filled.Oid, st.Filled.TotalSz, st.Filled.AvgPx))
+		case st.Resting != nil:
+			details = append(details, fmt.Sprintf("[%d]resting oid=%d", i, st.Resting.Oid))
+		}
+	}
+	if resp.ErrorMessage != "" {
+		details = append(details, fmt.Sprintf("message=%s", resp.ErrorMessage))
+	}
+	summary := strings.Join(details, "; ")
+	if strings.TrimSpace(summary) == "" {
+		summary = "no_status"
+	}
+	status := strings.TrimSpace(resp.Status)
+	if status == "" {
+		return summary
+	}
+	return fmt.Sprintf("status=%s %s", status, summary)
 }
 
 func (m *Manager) writeJournalRecord(t *VirtualTrader, ectx *executorpkg.Context, out *executorpkg.FullDecision, decisionsJSON string, actions []map[string]any, callErr error, allOK bool) error {
