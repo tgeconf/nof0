@@ -3,12 +3,14 @@ package executor
 import (
 	"context"
 	"errors"
+	"math"
 	"strings"
 	"time"
 
 	"github.com/zeromicro/go-zero/core/logx"
 
 	"nof0-api/pkg/llm"
+	"nof0-api/pkg/market"
 )
 
 // Executor defines the decision engine interface.
@@ -28,6 +30,7 @@ type BasicExecutor struct {
 	renderer    *PromptRenderer
 	performance *PerformanceView
 	modelAlias  string
+	failures    map[string]int
 }
 
 // NewExecutor constructs a BasicExecutor. The templatePath is the executor prompt template provided by caller.
@@ -42,7 +45,13 @@ func NewExecutor(cfg *Config, client llm.LLMClient, templatePath string, modelAl
 	if err != nil {
 		return nil, err
 	}
-	return &BasicExecutor{cfg: cfg, llm: client, renderer: renderer, modelAlias: strings.TrimSpace(modelAlias)}, nil
+	return &BasicExecutor{
+		cfg:        cfg,
+		llm:        client,
+		renderer:   renderer,
+		modelAlias: strings.TrimSpace(modelAlias),
+		failures:   make(map[string]int),
+	}, nil
 }
 
 // GetConfig returns the underlying configuration.
@@ -59,6 +68,8 @@ func (e *BasicExecutor) GetFullDecision(input *Context) (*FullDecision, error) {
 	if input == nil {
 		return nil, errors.New("executor: input context is required")
 	}
+
+	e.logInputWarnings(input)
 
 	// Render prompt from template with dynamic sections.
 	inputs := buildPromptInputs(e.cfg, &Context{
@@ -111,9 +122,10 @@ func (e *BasicExecutor) GetFullDecision(input *Context) (*FullDecision, error) {
 	// Phase 3: Map & validate.
 	mapped := mapDecisionContract(out, input.Positions)
 	if err := ValidateDecisions(e.cfg, input, []Decision{mapped}); err != nil {
-		logx.Errorf("executor: decision validation failed digest=%s symbol=%s action=%s error=%v", promptDigest, mapped.Symbol, mapped.Action, err)
+		e.trackFailure(mapped.Symbol, err)
 		return &FullDecision{UserPrompt: promptStr, CoTTrace: "", Decisions: []Decision{mapped}, Timestamp: time.Now()}, err
 	}
+	e.resetFailure(mapped.Symbol)
 	logx.Infof("executor: decision validated digest=%s symbol=%s action=%s notional=%.2f confidence=%d", promptDigest, mapped.Symbol, mapped.Action, mapped.PositionSizeUSD, mapped.Confidence)
 
 	return &FullDecision{
@@ -129,4 +141,103 @@ func condPerf(p *PerformanceView) *PerformanceView {
 		return p
 	}
 	return &PerformanceView{}
+}
+
+func (e *BasicExecutor) logInputWarnings(input *Context) {
+	if input == nil {
+		return
+	}
+	for sym, snap := range input.MarketDataMap {
+		if snap == nil {
+			continue
+		}
+		if math.Abs(snap.Change.OneHour) > 0.05 {
+			logx.Slowf("executor: market change anomaly symbol=%s change_1h=%.4f change_4h=%.4f", sym, snap.Change.OneHour, snap.Change.FourHour)
+		}
+		if math.Abs(snap.Change.FourHour) > 0.1 {
+			logx.Slowf("executor: market 4h change anomaly symbol=%s change_4h=%.4f", sym, snap.Change.FourHour)
+		}
+		if snap.Price.Last <= 0 {
+			logx.Slowf("executor: non-positive price symbol=%s price=%f", sym, snap.Price.Last)
+		}
+		if snap.Funding != nil && math.Abs(snap.Funding.Rate) > 0.01 {
+			logx.Slowf("executor: funding anomaly symbol=%s funding=%.6f", sym, snap.Funding.Rate)
+		}
+		checkIndicators(sym, snap)
+	}
+
+	if input.Account.TotalEquity <= 0 {
+		logx.Slowf("executor: account equity non-positive equity=%.2f", input.Account.TotalEquity)
+	}
+	symbolSeen := make(map[string]struct{}, len(input.Positions))
+	for _, pos := range input.Positions {
+		if _, exists := symbolSeen[pos.Symbol]; exists {
+			logx.Slowf("executor: duplicate position detected symbol=%s", pos.Symbol)
+		}
+		symbolSeen[pos.Symbol] = struct{}{}
+	}
+	if len(input.CandidateCoins) == 0 && len(input.Positions) > 0 {
+		logx.Slowf("executor: no candidates provided while %d positions open", len(input.Positions))
+	}
+}
+
+func checkIndicators(symbol string, snap *market.Snapshot) {
+	if snap == nil {
+		return
+	}
+	if len(snap.Indicators.EMA) == 0 && len(snap.Indicators.RSI) == 0 && snap.Indicators.MACD == 0 {
+		logx.Slowf("executor: indicators missing for symbol=%s", symbol)
+	}
+	if snap.Indicators.RSI != nil {
+		for key, value := range snap.Indicators.RSI {
+			if value < 0 || value > 100 {
+				logx.Slowf("executor: RSI anomaly symbol=%s interval=%s value=%.2f", symbol, key, value)
+			}
+		}
+	}
+}
+
+func (e *BasicExecutor) trackFailure(symbol string, err error) {
+	if e.failures == nil {
+		e.failures = make(map[string]int)
+	}
+	key := normalizeFailureKey(symbol, err)
+	if key == "" {
+		return
+	}
+	e.failures[key]++
+	count := e.failures[key]
+	logx.Errorf("executor: decision validation failed key=%s symbol=%s error=%v count=%d", key, symbol, err, count)
+	if count >= 3 {
+		logx.Slowf("executor: repeated validation failures key=%s count=%d last_error=%v", key, count, err)
+	}
+}
+
+func (e *BasicExecutor) resetFailure(symbol string) {
+	if e.failures == nil {
+		return
+	}
+	key := normalizeFailureKey(symbol, nil)
+	if key == "" {
+		return
+	}
+	delete(e.failures, key)
+}
+
+func normalizeFailureKey(symbol string, err error) string {
+	key := strings.ToUpper(strings.TrimSpace(symbol))
+	if key != "" {
+		return key
+	}
+	if err == nil {
+		return ""
+	}
+	msg := strings.TrimSpace(err.Error())
+	if len(msg) > 64 {
+		msg = msg[:64]
+	}
+	if msg == "" {
+		return ""
+	}
+	return "ERR:" + msg
 }
