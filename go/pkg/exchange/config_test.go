@@ -5,9 +5,10 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/stretchr/testify/assert"
 	exchange "nof0-api/pkg/exchange"
 	_ "nof0-api/pkg/exchange/hyperliquid"
+
+	"github.com/stretchr/testify/assert"
 )
 
 const testPrivateKey = "0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a741b52d7c5d5095e2f"
@@ -20,9 +21,9 @@ func TestLoadConfigAndBuildProviders(t *testing.T) {
 	})
 
 	configYAML := `
-default: hyperliquid_main
+default: hyperliquid_testnet
 providers:
-  hyperliquid_main:
+  hyperliquid_testnet:
     type: hyperliquid
     private_key: ${EXCHANGE_PRIVATE_KEY}
     timeout: 45s
@@ -36,19 +37,19 @@ providers:
 	cfg, err := exchange.LoadConfig(path)
 	assert.NoError(t, err, "LoadConfig should not error")
 	assert.NotNil(t, cfg, "config should not be nil")
-	assert.Equal(t, "hyperliquid_main", cfg.Default, "default should be hyperliquid_main")
+	assert.Equal(t, "hyperliquid_testnet", cfg.Default, "default should be hyperliquid_testnet")
 
 	providers, err := cfg.BuildProviders()
 	assert.NoError(t, err, "BuildProviders should not error")
 	assert.Len(t, providers, 1, "should have 1 provider")
-	assert.Contains(t, providers, "hyperliquid_main", "provider map should contain hyperliquid_main")
+	assert.Contains(t, providers, "hyperliquid_testnet", "provider map should contain hyperliquid_testnet")
 }
 
 func TestLoadConfigRequiresPrivateKey(t *testing.T) {
 	dir := t.TempDir()
 	configYAML := `
 providers:
-  hyperliquid_main:
+  hyperliquid_testnet:
     type: hyperliquid
 `
 	path := filepath.Join(dir, "exchange.yaml")

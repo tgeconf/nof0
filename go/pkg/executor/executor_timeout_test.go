@@ -44,7 +44,7 @@ func TestExecutor_TimeoutHonored(t *testing.T) {
 
 	client := &slowLLM{}
 	templatePath := filepath.Join("..", "..", "etc", "prompts", "executor", "default_prompt.tmpl")
-	exec, err := NewExecutor(cfg, client, templatePath)
+	exec, err := NewExecutor(cfg, client, templatePath, "")
 	assert.NoError(t, err, "NewExecutor should not error")
 	assert.NotNil(t, exec, "executor should not be nil")
 

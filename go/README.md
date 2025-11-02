@@ -109,7 +109,7 @@ export HYPERLIQUID_PRIVATE_KEY=0000000000000000000000000000000000000000000000000
 traders:
   - id: trader_aggressive_short
     name: Aggressive Short
-    exchange_provider: hyperliquid_main   # 来自 etc/exchange.yaml 的 providers 键名
+    exchange_provider: hyperliquid_testnet   # 来自 etc/exchange.yaml 的 providers 键名
     market_provider: hyperliquid          # 来自 etc/market.yaml 的 providers 键名
     prompt_template: prompts/manager/aggressive_short.tmpl
     decision_interval: 3m
@@ -146,12 +146,12 @@ overrides: {}
 - `etc/exchange.yaml`（节选：统一管理交易所凭证）
 
 ```yaml
-default: hyperliquid_main
+default: hyperliquid_testnet
 providers:
-  hyperliquid_main:
+  hyperliquid_testnet:
     type: hyperliquid
     private_key: ${HYPERLIQUID_PRIVATE_KEY}
-    testnet: false
+    testnet: true
     timeout: 30s
 ```
 

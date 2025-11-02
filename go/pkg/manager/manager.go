@@ -73,7 +73,7 @@ func (f *BasicExecutorFactory) NewExecutor(traderCfg TraderConfig) (executorpkg.
 		AllowedTraderIDs:       []string{traderCfg.ID},
 	}
 	// executor.NewExecutor validates config.
-	exec, err := executorpkg.NewExecutor(ec, f.llmClient, traderCfg.PromptTemplate)
+	exec, err := executorpkg.NewExecutor(ec, f.llmClient, traderCfg.ExecutorTemplate, traderCfg.Model)
 	if err != nil {
 		return nil, err
 	}
@@ -215,7 +215,7 @@ func (m *Manager) RegisterTrader(cfg TraderConfig) (*VirtualTrader, error) {
 	if cfg.AutoStart {
 		_ = vt.Start()
 	}
-	logx.Infof("manager: registered trader id=%s name=%s allocation=%.2f%% exchange=%s market=%s auto_start=%t", vt.ID, vt.Name, cfg.AllocationPct, cfg.ExchangeProvider, cfg.MarketProvider, cfg.AutoStart)
+	logx.Infof("manager: registered trader id=%s name=%s allocation=%.2f%% exchange=%s market=%s model=%s auto_start=%t", vt.ID, vt.Name, cfg.AllocationPct, cfg.ExchangeProvider, cfg.MarketProvider, cfg.Model, cfg.AutoStart)
 	return vt, nil
 }
 

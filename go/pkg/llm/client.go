@@ -179,6 +179,12 @@ func (c *Client) Chat(ctx context.Context, req *ChatRequest) (*ChatResponse, err
 		return nil, err
 	}
 
+	c.logger.Info(ctx, "llm chat request", Fields{
+		"model":    modelID,
+		"messages": len(req.Messages),
+		"prompt":   summarizeMessages(req.Messages),
+	})
+
 	// If using Zenmux auto-routing, fall back to raw JSON call to support
 	// `model_routing_config` which is not modeled in the OpenAI SDK types.
 	if strings.EqualFold(modelID, "zenmux/auto") || req.Routing != nil {
@@ -213,11 +219,16 @@ func (c *Client) Chat(ctx context.Context, req *ChatRequest) (*ChatResponse, err
 	}
 
 	result := convertCompletion(completion)
+	respText := ""
+	if len(result.Choices) > 0 {
+		respText = strings.TrimSpace(result.Choices[0].Message.Content)
+	}
 	c.logger.Info(ctx, "llm chat success", Fields{
 		"model":             modelID,
 		"duration_ms":       time.Since(start).Milliseconds(),
 		"prompt_tokens":     result.Usage.PromptTokens,
 		"completion_tokens": result.Usage.CompletionTokens,
+		"response":          respText,
 	})
 
 	return result, nil
@@ -337,6 +348,21 @@ func ifEmptyString(s, fallback string) string {
 		return fallback
 	}
 	return s
+}
+
+func summarizeMessages(msgs []Message) string {
+	if len(msgs) == 0 {
+		return ""
+	}
+	var parts []string
+	for i, m := range msgs {
+		role := strings.ToLower(strings.TrimSpace(m.Role))
+		if role == "" {
+			role = "user"
+		}
+		parts = append(parts, fmt.Sprintf("[%d] role=%s content=%s", i, role, strings.TrimSpace(m.Content)))
+	}
+	return strings.Join(parts, " | ")
 }
 
 // ChatStream initiates a streaming completion call. The returned channel closes once the stream is exhausted.

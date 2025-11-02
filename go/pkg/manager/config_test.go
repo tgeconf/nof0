@@ -15,11 +15,18 @@ func TestLoadConfig(t *testing.T) {
 	err := os.MkdirAll(filepath.Dir(managerPromptAgg), 0o700)
 	assert.NoError(t, err, "mkdir prompts should succeed")
 
+	execPrompt := filepath.Join(dir, "prompts/executor/default_prompt.tmpl")
+	err = os.MkdirAll(filepath.Dir(execPrompt), 0o700)
+	assert.NoError(t, err, "mkdir executor prompts should succeed")
+
 	err = os.WriteFile(managerPromptAgg, []byte("aggressive short prompt"), 0o600)
 	assert.NoError(t, err, "write aggressive prompt should succeed")
 
 	err = os.WriteFile(managerPromptCon, []byte("conservative long prompt"), 0o600)
 	assert.NoError(t, err, "write conservative prompt should succeed")
+
+	err = os.WriteFile(execPrompt, []byte("executor prompt"), 0o600)
+	assert.NoError(t, err, "write executor prompt should succeed")
 
 	configYAML := `
 manager:
@@ -36,6 +43,8 @@ traders:
     exchange_provider: " hyperliquid_primary "
     market_provider: " hl_market "
     prompt_template: prompts/manager/aggressive_short.tmpl
+    executor_prompt_template: prompts/executor/default_prompt.tmpl
+    model: deepseek-chat
     decision_interval: 4m
     allocation_pct: 40
     auto_start: true
@@ -55,6 +64,7 @@ traders:
     exchange_provider: hyperliquid_secondary
     market_provider: hl_market
     prompt_template: prompts/manager/conservative_long.tmpl
+    executor_prompt_template: prompts/executor/default_prompt.tmpl
     decision_interval: 5m
     allocation_pct: 30
     auto_start: false
@@ -96,6 +106,12 @@ func TestAllocationValidation(t *testing.T) {
 	err := os.WriteFile(promptPath, []byte("generic prompt"), 0o600)
 	assert.NoError(t, err, "write prompt should succeed")
 
+	execPrompt := filepath.Join(dir, "prompts/executor/default_prompt.tmpl")
+	err = os.MkdirAll(filepath.Dir(execPrompt), 0o700)
+	assert.NoError(t, err, "mkdir executor prompts should succeed")
+	err = os.WriteFile(execPrompt, []byte("executor prompt"), 0o600)
+	assert.NoError(t, err, "write executor prompt should succeed")
+
 	configYAML := `
 manager:
   total_equity_usd: 1000
@@ -111,6 +127,7 @@ traders:
     exchange_provider: ex
     market_provider: market_a
     prompt_template: prompt.tmpl
+    executor_prompt_template: prompts/executor/default_prompt.tmpl
     decision_interval: 3m
     allocation_pct: 80
     auto_start: true
@@ -130,6 +147,7 @@ traders:
     exchange_provider: ex
     market_provider: market_a
     prompt_template: prompt.tmpl
+    executor_prompt_template: prompts/executor/default_prompt.tmpl
     decision_interval: 3m
     allocation_pct: 30
     auto_start: true
@@ -159,6 +177,11 @@ monitoring:
 
 func TestLoadConfigMissingPrompt(t *testing.T) {
 	dir := t.TempDir()
+	execPrompt := filepath.Join(dir, "prompts/executor/default_prompt.tmpl")
+	err := os.MkdirAll(filepath.Dir(execPrompt), 0o700)
+	assert.NoError(t, err, "mkdir executor prompts should succeed")
+	err = os.WriteFile(execPrompt, []byte("executor prompt"), 0o600)
+	assert.NoError(t, err, "write executor prompt should succeed")
 	configYAML := `
 manager:
   total_equity_usd: 1000
@@ -174,6 +197,7 @@ traders:
     exchange_provider: ex
     market_provider: market_a
     prompt_template: missing.tmpl
+    executor_prompt_template: prompts/executor/default_prompt.tmpl
     decision_interval: 3m
     allocation_pct: 50
     auto_start: true
@@ -193,7 +217,7 @@ monitoring:
   metrics_exporter: prometheus
 `
 	path := filepath.Join(dir, "bad.yaml")
-	err := os.WriteFile(path, []byte(configYAML), 0o600)
+	err = os.WriteFile(path, []byte(configYAML), 0o600)
 	assert.NoError(t, err, "write config should succeed")
 
 	_, err = LoadConfig(path)

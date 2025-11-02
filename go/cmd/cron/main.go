@@ -9,6 +9,7 @@ import (
 	"syscall"
 	"time"
 
+	"nof0-api/internal/cli"
 	"nof0-api/internal/config"
 	"nof0-api/pkg/exchange"
 	"nof0-api/pkg/market"
@@ -45,19 +46,9 @@ func main() {
 
 	// Log configuration information
 	log.Printf("[main] Configuration loaded:")
-	log.Printf("  - Environment: %s", appCfg.Env)
-	log.Printf("  - DataPath: %s", appCfg.DataPath)
-	if appCfg.Postgres.DSN != "" {
-		log.Printf("  - Postgres: Configured")
-	} else {
-		log.Printf("  - Postgres: Not configured")
+	for _, line := range cli.ConfigSummaryLines(appCfg) {
+		log.Printf("  - %s", line)
 	}
-	if appCfg.Redis.Host != "" {
-		log.Printf("  - Redis: %s", appCfg.Redis.Host)
-	} else {
-		log.Printf("  - Redis: Not configured")
-	}
-	log.Printf("  - TTL Settings: short=%ds, medium=%ds, long=%ds", appCfg.TTL.Short, appCfg.TTL.Medium, appCfg.TTL.Long)
 
 	marketCfg := appCfg.Market.Value
 	marketPath := appCfg.Market.File

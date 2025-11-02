@@ -11,6 +11,8 @@ import (
 
 	"github.com/zeromicro/go-zero/core/logx"
 
+	"nof0-api/internal/cli"
+	appconfig "nof0-api/internal/config"
 	"nof0-api/pkg/confkit"
 	exchangepkg "nof0-api/pkg/exchange"
 	_ "nof0-api/pkg/exchange/hyperliquid"
@@ -158,12 +160,21 @@ func main() {
 		marketPath   = flag.String("market-config", "etc/market.yaml", "path to market provider configuration")
 		llmPath      = flag.String("llm-config", "etc/llm.yaml", "path to llm client configuration")
 		managerPath  = flag.String("manager-config", "etc/manager.yaml", "path to manager configuration")
+		appConfig    = flag.String("app-config", "etc/nof0.yaml", "path to application config for summary logging")
 		allowedRaw   = flag.String("symbols", "BTC,ETH", "comma-separated list of tradable symbols")
 		totalEquity  = flag.Float64("equity", 100.0, "total deployable equity in USD")
 	)
 	flag.Parse()
 	logx.MustSetup(logx.LogConf{})
 	logx.DisableStat()
+
+	if strings.TrimSpace(*appConfig) != "" {
+		if cfg, err := appconfig.Load(*appConfig); err != nil {
+			logx.Errorf("load app config %s: %v", *appConfig, err)
+		} else {
+			cli.LogConfigSummary(cfg)
+		}
+	}
 
 	allowedSymbols := parseSymbols(*allowedRaw)
 	if len(allowedSymbols) == 0 {
@@ -218,6 +229,21 @@ func main() {
 		fatalf("adapt manager config: %v", err)
 	}
 
+	// Validate trader-level model assignments against LLM config.
+	for _, trader := range managerCfg.Traders {
+		if trader.Model == "" {
+			continue
+		}
+		if _, ok := llmCfg.Model(trader.Model); ok {
+			continue
+		}
+		if strings.Contains(trader.Model, "/") {
+			// Allow fully qualified model identifiers.
+			continue
+		}
+		fatalf("manager trader %s references unknown model %s", trader.ID, trader.Model)
+	}
+
 	execFactory := managerpkg.NewBasicExecutorFactory(llmClient)
 	mgr := managerpkg.NewManager(managerCfg, execFactory, exchangeProviders, filteredMarkets)
 
@@ -226,7 +252,7 @@ func main() {
 		if regErr != nil {
 			fatalf("register trader %s: %v", traderCfg.ID, regErr)
 		}
-		logx.Infof("registered trader %s (%s) using exchange=%s market=%s", vt.ID, vt.Name, traderCfg.ExchangeProvider, traderCfg.MarketProvider)
+		logx.Infof("registered trader %s (%s) using exchange=%s market=%s model=%s", vt.ID, vt.Name, traderCfg.ExchangeProvider, traderCfg.MarketProvider, traderCfg.Model)
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())

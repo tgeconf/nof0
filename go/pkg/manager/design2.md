@@ -51,7 +51,7 @@ traders:
   - id: t01
     name: Spotter
     decision_interval: 3m
-    exchange_provider: hyperliquid_main
+    exchange_provider: hyperliquid_testnet
     market_provider: hyperliquid
     allocation_pct: 100
     risk_params:

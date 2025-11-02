@@ -9,9 +9,11 @@ manager:
 traders:
   - id: trader_aggressive_short
     name: Aggressive Short
-    exchange_provider: hyperliquid_main
+    exchange_provider: hyperliquid_testnet
     market_provider: hyperliquid
     prompt_template: prompts/manager/aggressive_short.tmpl
+    executor_prompt_template: prompts/executor/default_prompt.tmpl
+    model: deepseek-chat
     decision_interval: 3m
     allocation_pct: 40
     auto_start: true
@@ -28,9 +30,11 @@ traders:
 
   - id: trader_conservative_long
     name: Conservative Long
-    exchange_provider: hyperliquid_main
+    exchange_provider: hyperliquid_testnet
     market_provider: hyperliquid
     prompt_template: prompts/manager/conservative_long.tmpl
+    executor_prompt_template: prompts/executor/default_prompt.tmpl
+    model: deepseek-chat
     decision_interval: 5m
     allocation_pct: 30
     auto_start: true

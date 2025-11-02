@@ -3,6 +3,7 @@ package executor
 import (
 	"context"
 	"errors"
+	"strings"
 	"time"
 
 	"github.com/zeromicro/go-zero/core/logx"
@@ -26,10 +27,11 @@ type BasicExecutor struct {
 	llm         llm.LLMClient
 	renderer    *PromptRenderer
 	performance *PerformanceView
+	modelAlias  string
 }
 
 // NewExecutor constructs a BasicExecutor. The templatePath is the executor prompt template provided by caller.
-func NewExecutor(cfg *Config, client llm.LLMClient, templatePath string) (*BasicExecutor, error) {
+func NewExecutor(cfg *Config, client llm.LLMClient, templatePath string, modelAlias string) (*BasicExecutor, error) {
 	if cfg == nil {
 		return nil, errors.New("executor: config is required")
 	}
@@ -40,7 +42,7 @@ func NewExecutor(cfg *Config, client llm.LLMClient, templatePath string) (*Basic
 	if err != nil {
 		return nil, err
 	}
-	return &BasicExecutor{cfg: cfg, llm: client, renderer: renderer}, nil
+	return &BasicExecutor{cfg: cfg, llm: client, renderer: renderer, modelAlias: strings.TrimSpace(modelAlias)}, nil
 }
 
 // GetConfig returns the underlying configuration.
@@ -78,14 +80,20 @@ func (e *BasicExecutor) GetFullDecision(input *Context) (*FullDecision, error) {
 		return nil, err
 	}
 	promptDigest := llm.DigestString(promptStr)
-	logx.Infof("executor: prompt rendered digest=%s candidates=%d positions=%d runtime_minutes=%d", promptDigest, len(input.CandidateCoins), len(input.Positions), input.RuntimeMinutes)
+	if e.modelAlias != "" {
+		logx.Infof("executor: prompt rendered digest=%s candidates=%d positions=%d runtime_minutes=%d model=%s", promptDigest, len(input.CandidateCoins), len(input.Positions), input.RuntimeMinutes, e.modelAlias)
+	} else {
+		logx.Infof("executor: prompt rendered digest=%s candidates=%d positions=%d runtime_minutes=%d", promptDigest, len(input.CandidateCoins), len(input.Positions), input.RuntimeMinutes)
+	}
 
 	// Phase 2: Call LLM with structured output request.
 	req := &llm.ChatRequest{
-		// Leave Model empty to use client's default model.
 		Messages: []llm.Message{
 			{Role: "system", Content: promptStr},
 		},
+	}
+	if e.modelAlias != "" {
+		req.Model = e.modelAlias
 	}
 
 	// Use package-level contract type for structured response.

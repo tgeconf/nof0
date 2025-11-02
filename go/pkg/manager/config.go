@@ -41,6 +41,8 @@ type TraderConfig struct {
 	ExchangeProvider string         `yaml:"exchange_provider"`
 	MarketProvider   string         `yaml:"market_provider"`
 	PromptTemplate   string         `yaml:"prompt_template"`
+	ExecutorTemplate string         `yaml:"executor_prompt_template"`
+	Model            string         `yaml:"model"`
 	DecisionInterval time.Duration  `yaml:"-"`
 	RiskParams       RiskParameters `yaml:"risk_params"`
 	ExecGuards       ExecGuards     `yaml:"exec_guards"`
@@ -155,6 +157,10 @@ func (c *Config) applyDefaults() {
 		if strings.TrimSpace(c.Traders[i].DecisionIntervalRaw) == "" {
 			c.Traders[i].DecisionIntervalRaw = "3m"
 		}
+		if strings.TrimSpace(c.Traders[i].ExecutorTemplate) == "" {
+			c.Traders[i].ExecutorTemplate = "prompts/executor/default_prompt.tmpl"
+		}
+		c.Traders[i].Model = strings.TrimSpace(c.Traders[i].Model)
 	}
 	if strings.TrimSpace(c.Monitoring.UpdateIntervalRaw) == "" {
 		c.Monitoring.UpdateIntervalRaw = "30s"
@@ -208,6 +214,7 @@ func (c *Config) expandFields() {
 		c.Traders[i].ExchangeProvider = strings.TrimSpace(c.Traders[i].ExchangeProvider)
 		c.Traders[i].MarketProvider = strings.TrimSpace(c.Traders[i].MarketProvider)
 		c.Traders[i].PromptTemplate = c.resolvePath(c.Traders[i].PromptTemplate)
+		c.Traders[i].ExecutorTemplate = c.resolvePath(c.Traders[i].ExecutorTemplate)
 		c.Traders[i].JournalDir = c.resolvePath(c.Traders[i].JournalDir)
 	}
 	c.Monitoring.AlertWebhook = strings.TrimSpace(os.ExpandEnv(c.Monitoring.AlertWebhook))
@@ -265,6 +272,13 @@ func (c *Config) Validate() error {
 		if _, err := os.Stat(trader.PromptTemplate); err != nil {
 			return fmt.Errorf("manager config: traders[%d].prompt_template %q not accessible: %w", i, trader.PromptTemplate, err)
 		}
+		if strings.TrimSpace(trader.ExecutorTemplate) == "" {
+			return fmt.Errorf("manager config: traders[%d].executor_prompt_template is required", i)
+		}
+		if _, err := os.Stat(trader.ExecutorTemplate); err != nil {
+			return fmt.Errorf("manager config: traders[%d].executor_prompt_template %q not accessible: %w", i, trader.ExecutorTemplate, err)
+		}
+		trader.Model = strings.TrimSpace(trader.Model)
 		if trader.AllocationPct < 0 {
 			return fmt.Errorf("manager config: traders[%d].allocation_pct cannot be negative", i)
 		}

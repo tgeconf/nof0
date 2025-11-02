@@ -7,7 +7,7 @@
 - Exchange: `pkg/exchange.LoadConfig` validates providers and expands env vars, then `BuildProviders` instantiates registered provider types (`_ "pkg/exchange/hyperliquid"`).
 - Market: `pkg/market.LoadConfig` mirrors exchange loading; `BuildProviders` uses `_ "pkg/market/exchanges/hyperliquid"` for registration.
 - LLM: `pkg/llm.LoadConfig` applies env overrides and sanity checks; `llm.NewClient` creates an OpenAI-compatible client with optional retries.
-- Manager: `pkg/manager.LoadConfig` parses trader/risk settings and validates prompt templates on disk.
+- Manager: `pkg/manager.LoadConfig` parses trader/risk settings, validates both manager and executor prompt templates, and now recognizes per-trader LLM model aliases (matching `etc/llm.yaml`).
 
 **BTC/ETH Restriction**
 - Parse `--symbols` (default `BTC,ETH`) into an uppercase set; fail fast if the set is empty.
@@ -30,7 +30,7 @@
 - Build an executor factory with `manager.NewBasicExecutorFactory(llmClient)`; it adapts each `TraderConfig` into an `executor.Config`.
 - Instantiate the manager: `manager.NewManager(managerCfg, executorFactory, exchangeProviders, filteredMarkets)`.
 - For each trader:
-  - Call `mgr.RegisterTrader(traderCfg)`; this attaches exchange/market providers, creates an executor, and auto-starts when `AutoStart` is true.
+  - Call `mgr.RegisterTrader(traderCfg)`; this attaches exchange/market providers, creates an executor (honoring `executor_prompt_template` and `model`), and auto-starts when `AutoStart` is true.
   - Log the registration for observability.
 - Consider adding telemetry hooks later (prompt digest, allocation summary).
 
