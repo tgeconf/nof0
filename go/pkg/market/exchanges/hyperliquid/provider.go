@@ -67,8 +67,8 @@ func init() {
 		if cfg.HTTPTimeout > 0 {
 			clientOptions = append(clientOptions, WithHTTPClient(&http.Client{Timeout: cfg.HTTPTimeout}))
 		}
-		if cfg.BaseURL != "" {
-			clientOptions = append(clientOptions, WithBaseURL(cfg.BaseURL))
+		if cfg.Testnet {
+			clientOptions = append(clientOptions, WithBaseURL(testnetBaseURL))
 		}
 		if cfg.MaxRetries > 0 {
 			clientOptions = append(clientOptions, WithMaxRetries(cfg.MaxRetries))

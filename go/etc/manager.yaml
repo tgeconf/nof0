@@ -10,7 +10,9 @@ traders:
   - id: trader_aggressive_short
     name: Aggressive Short
     exchange_provider: hyperliquid_testnet
-    market_provider: hyperliquid
+    market_provider: hyperliquid_testnet
+    order_style: market_ioc
+    market_ioc_slippage_bps: 75
     prompt_template: prompts/manager/aggressive_short.tmpl
     executor_prompt_template: prompts/executor/default_prompt.tmpl
     model: deepseek-chat
@@ -31,7 +33,9 @@ traders:
   - id: trader_conservative_long
     name: Conservative Long
     exchange_provider: hyperliquid_testnet
-    market_provider: hyperliquid
+    market_provider: hyperliquid_testnet
+    order_style: market_ioc
+    market_ioc_slippage_bps: 75
     prompt_template: prompts/manager/conservative_long.tmpl
     executor_prompt_template: prompts/executor/default_prompt.tmpl
     model: deepseek-chat

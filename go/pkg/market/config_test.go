@@ -17,7 +17,7 @@ default: hyperliquid
 providers:
   hyperliquid:
     type: hyperliquid
-    base_url: https://api.hyperliquid.xyz/info
+    testnet: false
     timeout: 6s
     http_timeout: 12s
     max_retries: 4
@@ -35,6 +35,7 @@ providers:
 	assert.NoError(t, err, "BuildProviders should not error")
 	assert.Len(t, providers, 1, "should have 1 provider")
 	assert.Contains(t, providers, "hyperliquid", "provider map should contain hyperliquid")
+	assert.False(t, cfg.Providers["hyperliquid"].Testnet)
 }
 
 func TestMarketConfigInvalidType(t *testing.T) {

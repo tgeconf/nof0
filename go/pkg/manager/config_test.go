@@ -95,6 +95,8 @@ monitoring:
 	assert.Equal(t, "4m0s", cfg.Traders[0].DecisionInterval.String(), "DecisionInterval should be parsed correctly")
 	assert.Equal(t, "hyperliquid_primary", cfg.Traders[0].ExchangeProvider, "ExchangeProvider should be trimmed")
 	assert.Equal(t, "hl_market", cfg.Traders[0].MarketProvider, "MarketProvider should be trimmed")
+	assert.Equal(t, OrderStyleLimitIOC, cfg.Traders[0].OrderStyle, "OrderStyle should default to limit_ioc")
+	assert.Equal(t, defaultMarketIOCSlippageBps, cfg.Traders[0].MarketIOCSlippageBps, "MarketIOCSlippageBps should default")
 
 	wantStatePath := filepath.Join(dir, "state/manager.json")
 	assert.Equal(t, wantStatePath, cfg.Manager.StateStoragePath, "StateStoragePath should match expected path")

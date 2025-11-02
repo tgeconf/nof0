@@ -1,13 +1,19 @@
 # Example market data provider configuration.
-default: hyperliquid
+default: hyperliquid_testnet
 providers:
   hyperliquid:
     type: hyperliquid
-    # Base URL for Hyperliquid info endpoint (override for testnet or proxies).
-    base_url: https://api.hyperliquid.xyz/info
+    testnet: false
     # Per-call timeout when fetching market data.
     timeout: 8s
     # HTTP client timeout for the underlying info requests.
     http_timeout: 10s
     # Optional retry budget for info requests.
+    max_retries: 3
+
+  hyperliquid_testnet:
+    type: hyperliquid
+    testnet: true
+    timeout: 8s
+    http_timeout: 10s
     max_retries: 3

@@ -13,7 +13,6 @@ import (
 // Ensures env placeholders are expanded and durations parsed.
 func TestMarketConfig_EnvExpansionAndDurations(t *testing.T) {
 	dir := t.TempDir()
-	t.Setenv("BASE_URL_VAR", "https://api.hyperliquid.test/info")
 	t.Setenv("TOUT", "9s")
 	t.Setenv("HTTP_TOUT", "13s")
 
@@ -22,7 +21,7 @@ default: hp
 providers:
   hp:
     type: hyperliquid
-    base_url: ${BASE_URL_VAR}
+    testnet: true
     timeout: ${TOUT}
     http_timeout: ${HTTP_TOUT}
 `)
@@ -36,7 +35,7 @@ providers:
 
 	p := cfg.Providers["hp"]
 	assert.NotNil(t, p, "provider hp should exist")
-	assert.Equal(t, "https://api.hyperliquid.test/info", p.BaseURL, "BaseURL should be expanded from env var")
+	assert.True(t, p.Testnet)
 	assert.Equal(t, "9s", p.Timeout.String(), "Timeout should be parsed as 9s")
 	assert.Equal(t, "13s", p.HTTPTimeout.String(), "HTTPTimeout should be parsed as 13s")
 }

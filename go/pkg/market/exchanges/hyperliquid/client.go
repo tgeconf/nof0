@@ -16,6 +16,7 @@ import (
 
 const (
 	defaultBaseURL          = "https://api.hyperliquid.xyz/info"
+	testnetBaseURL          = "https://api.hyperliquid-testnet.xyz/info"
 	defaultHTTPTimeout      = 10 * time.Second
 	defaultMaxRetries       = 3
 	defaultRetryBackoffBase = 150 * time.Millisecond

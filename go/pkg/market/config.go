@@ -21,9 +21,8 @@ type Config struct {
 
 // ProviderConfig represents configuration for a single market provider.
 type ProviderConfig struct {
-	Type string `yaml:"type"`
-
-	BaseURL string `yaml:"base_url"`
+	Type    string `yaml:"type"`
+	Testnet bool   `yaml:"testnet"`
 	Mode    string `yaml:"mode"`
 
 	TimeoutRaw     string        `yaml:"timeout"`
@@ -116,7 +115,6 @@ func (c *Config) normalise() error {
 
 func (p *ProviderConfig) expandEnv() {
 	p.Type = strings.TrimSpace(os.ExpandEnv(p.Type))
-	p.BaseURL = strings.TrimSpace(os.ExpandEnv(p.BaseURL))
 	p.Mode = strings.TrimSpace(os.ExpandEnv(p.Mode))
 	p.TimeoutRaw = strings.TrimSpace(os.ExpandEnv(p.TimeoutRaw))
 	p.HTTPTimeoutRaw = strings.TrimSpace(os.ExpandEnv(p.HTTPTimeoutRaw))

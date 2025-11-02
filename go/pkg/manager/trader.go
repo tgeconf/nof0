@@ -74,22 +74,24 @@ func (p *PerformanceMetrics) ToExecutorView() *executorpkg.PerformanceView {
 type VirtualTrader struct {
 	mu sync.RWMutex
 
-	ID               string
-	Name             string
-	Exchange         string
-	ExchangeProvider exchange.Provider
-	MarketProvider   market.Provider
-	Executor         executorpkg.Executor
-	PromptTemplate   string
-	RiskParams       RiskParameters
-	ExecGuards       ExecGuards
-	ResourceAlloc    ResourceAllocation
-	State            TraderState
-	Performance      *PerformanceMetrics
-	LastDecisionAt   time.Time
-	DecisionInterval time.Duration
-	CreatedAt        time.Time
-	UpdatedAt        time.Time
+	ID                   string
+	Name                 string
+	Exchange             string
+	ExchangeProvider     exchange.Provider
+	MarketProvider       market.Provider
+	Executor             executorpkg.Executor
+	PromptTemplate       string
+	OrderStyle           OrderStyle
+	MarketIOCSlippageBps float64
+	RiskParams           RiskParameters
+	ExecGuards           ExecGuards
+	ResourceAlloc        ResourceAllocation
+	State                TraderState
+	Performance          *PerformanceMetrics
+	LastDecisionAt       time.Time
+	DecisionInterval     time.Duration
+	CreatedAt            time.Time
+	UpdatedAt            time.Time
 	// Cooldown map tracks last successful close time per symbol
 	Cooldown map[string]time.Time
 	// Decision journal writer (per trader)

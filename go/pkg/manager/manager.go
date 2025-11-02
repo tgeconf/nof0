@@ -185,15 +185,17 @@ func (m *Manager) RegisterTrader(cfg TraderConfig) (*VirtualTrader, error) {
 	}
 
 	vt := &VirtualTrader{
-		ID:               cfg.ID,
-		Name:             cfg.Name,
-		Exchange:         cfg.ExchangeProvider,
-		ExchangeProvider: ex,
-		MarketProvider:   mk,
-		Executor:         exec,
-		PromptTemplate:   cfg.PromptTemplate,
-		RiskParams:       cfg.RiskParams,
-		ExecGuards:       cfg.ExecGuards,
+		ID:                   cfg.ID,
+		Name:                 cfg.Name,
+		Exchange:             cfg.ExchangeProvider,
+		ExchangeProvider:     ex,
+		MarketProvider:       mk,
+		Executor:             exec,
+		PromptTemplate:       cfg.PromptTemplate,
+		OrderStyle:           cfg.OrderStyle,
+		MarketIOCSlippageBps: cfg.MarketIOCSlippageBps,
+		RiskParams:           cfg.RiskParams,
+		ExecGuards:           cfg.ExecGuards,
 		ResourceAlloc: ResourceAllocation{
 			AllocationPct: cfg.AllocationPct,
 		},
@@ -217,7 +219,7 @@ func (m *Manager) RegisterTrader(cfg TraderConfig) (*VirtualTrader, error) {
 	if cfg.AutoStart {
 		_ = vt.Start()
 	}
-	logx.Infof("manager: registered trader id=%s name=%s allocation=%.2f%% exchange=%s market=%s model=%s auto_start=%t", vt.ID, vt.Name, cfg.AllocationPct, cfg.ExchangeProvider, cfg.MarketProvider, cfg.Model, cfg.AutoStart)
+	logx.Infof("manager: registered trader id=%s name=%s allocation=%.2f%% exchange=%s market=%s model=%s order_style=%s auto_start=%t", vt.ID, vt.Name, cfg.AllocationPct, cfg.ExchangeProvider, cfg.MarketProvider, cfg.Model, cfg.OrderStyle, cfg.AutoStart)
 	return vt, nil
 }
 
@@ -470,48 +472,66 @@ func (m *Manager) ExecuteDecision(trader *VirtualTrader, decision *executorpkg.D
 	}
 	isBuy := decision.Action == "open_long"
 
-	// Format price/size via provider if available
-	priceStr := fmt.Sprintf("%.8f", price)
-	sizeStr := fmt.Sprintf("%.8f", qty)
-	if p, ok := trader.ExchangeProvider.(interface {
-		FormatPrice(context.Context, string, float64) (string, error)
-	}); ok {
-		if s, err := p.FormatPrice(ctx, decision.Symbol, price); err == nil && s != "" {
-			priceStr = s
-		} else if err != nil {
-			logx.WithContext(ctx).Infof("manager: format price fallback trader=%s symbol=%s price=%.8f err=%v", trader.ID, decision.Symbol, price, err)
+	switch trader.OrderStyle {
+	case OrderStyleMarketIOC:
+		slippage := trader.MarketIOCSlippageBps / 10000.0
+		if slippage <= 0 {
+			slippage = defaultMarketIOCSlippageBps / 10000.0
 		}
-	}
-	if p, ok := trader.ExchangeProvider.(interface {
-		FormatSize(context.Context, string, float64) (string, error)
-	}); ok {
-		if s, err := p.FormatSize(ctx, decision.Symbol, qty); err == nil && s != "" {
-			sizeStr = s
-		} else if err != nil {
-			logx.WithContext(ctx).Infof("manager: format size fallback trader=%s symbol=%s qty=%.8f err=%v", trader.ID, decision.Symbol, qty, err)
+		execProvider, ok := trader.ExchangeProvider.(interface {
+			IOCMarket(context.Context, string, bool, float64, float64, bool) (*exchange.OrderResponse, error)
+		})
+		if !ok {
+			return fmt.Errorf("manager: trader %s order_style=market_ioc unsupported by exchange provider", trader.ID)
 		}
-	}
+		if _, err := execProvider.IOCMarket(ctx, decision.Symbol, isBuy, qty, slippage, false); err != nil {
+			return fmt.Errorf("manager: market_ioc order %s %s: %w", decision.Symbol, decision.Action, err)
+		}
+		logx.Infof("manager: trader %s submitted market_ioc order symbol=%s notional=%.2f usd qty=%.6f slippage_bps=%.2f", trader.ID, decision.Symbol, decision.PositionSizeUSD, qty, trader.MarketIOCSlippageBps)
+	case OrderStyleLimitIOC, "":
+		priceStr := fmt.Sprintf("%.8f", price)
+		sizeStr := fmt.Sprintf("%.8f", qty)
+		if p, ok := trader.ExchangeProvider.(interface {
+			FormatPrice(context.Context, string, float64) (string, error)
+		}); ok {
+			if s, err := p.FormatPrice(ctx, decision.Symbol, price); err == nil && s != "" {
+				priceStr = s
+			} else if err != nil {
+				logx.WithContext(ctx).Infof("manager: format price fallback trader=%s symbol=%s price=%.8f err=%v", trader.ID, decision.Symbol, price, err)
+			}
+		}
+		if p, ok := trader.ExchangeProvider.(interface {
+			FormatSize(context.Context, string, float64) (string, error)
+		}); ok {
+			if s, err := p.FormatSize(ctx, decision.Symbol, qty); err == nil && s != "" {
+				sizeStr = s
+			} else if err != nil {
+				logx.WithContext(ctx).Infof("manager: format size fallback trader=%s symbol=%s qty=%.8f err=%v", trader.ID, decision.Symbol, qty, err)
+			}
+		}
 
-	logx.WithContext(ctx).Infof(
-		"manager: trader %s prepared order symbol=%s is_buy=%t raw_price=%.8f price_str=%s raw_qty=%.8f size_str=%s asset_idx=%d leverage=%d",
-		trader.ID, decision.Symbol, isBuy, price, priceStr, qty, sizeStr, assetIdx, lev,
-	)
+		logx.WithContext(ctx).Infof(
+			"manager: trader %s prepared order symbol=%s is_buy=%t raw_price=%.8f price_str=%s raw_qty=%.8f size_str=%s asset_idx=%d leverage=%d",
+			trader.ID, decision.Symbol, isBuy, price, priceStr, qty, sizeStr, assetIdx, lev,
+		)
 
-	// Submit a limit IOC order approximating a marketable order.
-	cloid := buildCloid(trader.ID, decision.Symbol, decision.Action, qty, time.Now())
-	order := exchange.Order{
-		Asset:      assetIdx,
-		IsBuy:      isBuy,
-		LimitPx:    priceStr,
-		Sz:         sizeStr,
-		ReduceOnly: false,
-		OrderType:  exchange.OrderType{Limit: &exchange.LimitOrderType{TIF: "Ioc"}},
-		Cloid:      cloid,
+		cloid := buildCloid(trader.ID, decision.Symbol, decision.Action, qty, time.Now())
+		order := exchange.Order{
+			Asset:      assetIdx,
+			IsBuy:      isBuy,
+			LimitPx:    priceStr,
+			Sz:         sizeStr,
+			ReduceOnly: false,
+			OrderType:  exchange.OrderType{Limit: &exchange.LimitOrderType{TIF: "Ioc"}},
+			Cloid:      cloid,
+		}
+		if _, err := trader.ExchangeProvider.PlaceOrder(ctx, order); err != nil {
+			return fmt.Errorf("manager: place order %s %s: %w", decision.Symbol, decision.Action, err)
+		}
+		logx.Infof("manager: trader %s submitted limit_ioc order symbol=%s notional=%.2f usd qty=%.6f cloid=%s", trader.ID, decision.Symbol, decision.PositionSizeUSD, qty, cloid)
+	default:
+		return fmt.Errorf("manager: trader %s unsupported order_style=%s", trader.ID, trader.OrderStyle)
 	}
-	if _, err := trader.ExchangeProvider.PlaceOrder(ctx, order); err != nil {
-		return fmt.Errorf("manager: place order %s %s: %w", decision.Symbol, decision.Action, err)
-	}
-	logx.Infof("manager: trader %s submitted %s order symbol=%s notional=%.2f usd qty=%.6f cloid=%s", trader.ID, decision.Action, decision.Symbol, decision.PositionSizeUSD, qty, cloid)
 	// Configure reduce-only SL/TP best-effort
 	side := "LONG"
 	if !isBuy { // open_short

@@ -26,13 +26,13 @@ timeout: 2s
 		t.Fatalf("write llm.yaml: %v", err)
 	}
 
-	// Prepare market.yaml using env placeholders for base_url and durations
+	// Prepare market.yaml using env placeholders for durations
 	marketYAML := []byte(`
 default: hyper
 providers:
   hyper:
     type: hyperliquid
-    base_url: ${HLIQ_BASE}
+    testnet: true
     timeout: ${HLIQ_TIMEOUT}
     http_timeout: ${HLIQ_HTTP_TIMEOUT}
     max_retries: 2
@@ -46,7 +46,6 @@ providers:
 	t.Setenv("ZENMUX_BASE_URL", "https://zenmux.example/api")
 	t.Setenv("ZENMUX_API_KEY", "test-key")
 	t.Setenv("ZENMUX_DEFAULT_MODEL", "gpt-x")
-	t.Setenv("HLIQ_BASE", "https://api.hyperliquid.local/info")
 	t.Setenv("HLIQ_TIMEOUT", "7s")
 	t.Setenv("HLIQ_HTTP_TIMEOUT", "11s")
 
@@ -74,8 +73,8 @@ providers:
 	if p == nil {
 		t.Fatalf("Market provider 'hyper' missing")
 	}
-	if got := p.BaseURL; got != "https://api.hyperliquid.local/info" {
-		t.Fatalf("Market BaseURL not expanded, got %q", got)
+	if !p.Testnet {
+		t.Fatalf("Market Testnet flag not parsed")
 	}
 	if p.Timeout.String() != "7s" || p.HTTPTimeout.String() != "11s" {
 		t.Fatalf("Market timeouts not parsed, got timeout=%s http_timeout=%s", p.Timeout, p.HTTPTimeout)

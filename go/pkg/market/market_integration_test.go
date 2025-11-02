@@ -21,7 +21,7 @@ default: hyperliquid-test
 providers:
   hyperliquid-test:
     type: hyperliquid
-    base_url: https://api.hyperliquid.xyz
+    testnet: false
     timeout: 10s
     http_timeout: 8s
     max_retries: 3

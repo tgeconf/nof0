@@ -15,6 +15,16 @@ import (
 	"nof0-api/pkg/confkit"
 )
 
+// OrderStyle defines how the manager submits opening orders.
+type OrderStyle string
+
+const (
+	OrderStyleLimitIOC  OrderStyle = "limit_ioc"
+	OrderStyleMarketIOC OrderStyle = "market_ioc"
+
+	defaultMarketIOCSlippageBps = 50.0 // 0.50% slippage
+)
+
 // Config defines the overall manager configuration schema.
 type Config struct {
 	Manager    ManagerConfig    `yaml:"manager"`
@@ -36,20 +46,22 @@ type ManagerConfig struct {
 }
 
 type TraderConfig struct {
-	ID               string         `yaml:"id"`
-	Name             string         `yaml:"name"`
-	ExchangeProvider string         `yaml:"exchange_provider"`
-	MarketProvider   string         `yaml:"market_provider"`
-	PromptTemplate   string         `yaml:"prompt_template"`
-	ExecutorTemplate string         `yaml:"executor_prompt_template"`
-	Model            string         `yaml:"model"`
-	DecisionInterval time.Duration  `yaml:"-"`
-	RiskParams       RiskParameters `yaml:"risk_params"`
-	ExecGuards       ExecGuards     `yaml:"exec_guards"`
-	AllocationPct    float64        `yaml:"allocation_pct"`
-	AutoStart        bool           `yaml:"auto_start"`
-	JournalEnabled   bool           `yaml:"journal_enabled"`
-	JournalDir       string         `yaml:"journal_dir"`
+	ID                   string         `yaml:"id"`
+	Name                 string         `yaml:"name"`
+	ExchangeProvider     string         `yaml:"exchange_provider"`
+	MarketProvider       string         `yaml:"market_provider"`
+	OrderStyle           OrderStyle     `yaml:"order_style"`
+	MarketIOCSlippageBps float64        `yaml:"market_ioc_slippage_bps"`
+	PromptTemplate       string         `yaml:"prompt_template"`
+	ExecutorTemplate     string         `yaml:"executor_prompt_template"`
+	Model                string         `yaml:"model"`
+	DecisionInterval     time.Duration  `yaml:"-"`
+	RiskParams           RiskParameters `yaml:"risk_params"`
+	ExecGuards           ExecGuards     `yaml:"exec_guards"`
+	AllocationPct        float64        `yaml:"allocation_pct"`
+	AutoStart            bool           `yaml:"auto_start"`
+	JournalEnabled       bool           `yaml:"journal_enabled"`
+	JournalDir           string         `yaml:"journal_dir"`
 
 	DecisionIntervalRaw string `yaml:"decision_interval"`
 }
@@ -161,6 +173,12 @@ func (c *Config) applyDefaults() {
 			c.Traders[i].ExecutorTemplate = "prompts/executor/default_prompt.tmpl"
 		}
 		c.Traders[i].Model = strings.TrimSpace(c.Traders[i].Model)
+		if strings.TrimSpace(string(c.Traders[i].OrderStyle)) == "" {
+			c.Traders[i].OrderStyle = OrderStyleLimitIOC
+		}
+		if c.Traders[i].MarketIOCSlippageBps <= 0 {
+			c.Traders[i].MarketIOCSlippageBps = defaultMarketIOCSlippageBps
+		}
 	}
 	if strings.TrimSpace(c.Monitoring.UpdateIntervalRaw) == "" {
 		c.Monitoring.UpdateIntervalRaw = "30s"
@@ -213,6 +231,7 @@ func (c *Config) expandFields() {
 		c.Traders[i].Name = strings.TrimSpace(c.Traders[i].Name)
 		c.Traders[i].ExchangeProvider = strings.TrimSpace(c.Traders[i].ExchangeProvider)
 		c.Traders[i].MarketProvider = strings.TrimSpace(c.Traders[i].MarketProvider)
+		c.Traders[i].OrderStyle = OrderStyle(strings.ToLower(strings.TrimSpace(string(c.Traders[i].OrderStyle))))
 		c.Traders[i].PromptTemplate = c.resolvePath(c.Traders[i].PromptTemplate)
 		c.Traders[i].ExecutorTemplate = c.resolvePath(c.Traders[i].ExecutorTemplate)
 		c.Traders[i].JournalDir = c.resolvePath(c.Traders[i].JournalDir)
@@ -286,6 +305,9 @@ func (c *Config) Validate() error {
 		if err := trader.RiskParams.Validate(i); err != nil {
 			return err
 		}
+		if err := trader.validateOrderStyle(i); err != nil {
+			return err
+		}
 		// ExecGuards validation (optional; non-negative checks)
 		if trader.ExecGuards.MaxNewPositionsPerCycle < 0 {
 			return fmt.Errorf("manager config: traders[%d].exec_guards.max_new_positions_per_cycle cannot be negative", i)
@@ -306,6 +328,18 @@ func (c *Config) Validate() error {
 
 	if c.Monitoring.MetricsExporter == "" {
 		return errors.New("manager config: monitoring.metrics_exporter is required")
+	}
+	return nil
+}
+
+func (t TraderConfig) validateOrderStyle(index int) error {
+	switch t.OrderStyle {
+	case OrderStyleLimitIOC, OrderStyleMarketIOC:
+	default:
+		return fmt.Errorf("manager config: traders[%d].order_style %q unsupported", index, t.OrderStyle)
+	}
+	if t.OrderStyle == OrderStyleMarketIOC && t.MarketIOCSlippageBps <= 0 {
+		return fmt.Errorf("manager config: traders[%d].market_ioc_slippage_bps must be positive", index)
 	}
 	return nil
 }
