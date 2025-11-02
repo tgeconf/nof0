@@ -19,13 +19,13 @@ func TestCalculatePriceChange(t *testing.T) {
 			name:          "positive change",
 			currentPrice:  110,
 			previousPrice: 100,
-			wantChange:    10.0,
+			wantChange:    0.10,
 		},
 		{
 			name:          "negative change",
 			currentPrice:  90,
 			previousPrice: 100,
-			wantChange:    -10.0,
+			wantChange:    -0.10,
 		},
 		{
 			name:          "zero previous price",

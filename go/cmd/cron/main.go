@@ -237,8 +237,8 @@ func monitorMarket(parentCtx context.Context, provider market.Provider) {
 			log.Printf("[market.snapshot.%s] [OK] price=%.2f, change_1h=%.2f%%, change_4h=%.2f%%, took %dms",
 				sym,
 				snapshot.Price.Last,
-				snapshot.Change.OneHour,
-				snapshot.Change.FourHour,
+				snapshot.Change.OneHour*100,
+				snapshot.Change.FourHour*100,
 				elapsed.Milliseconds())
 
 			// Log indicators
@@ -260,7 +260,7 @@ func monitorMarket(parentCtx context.Context, provider market.Provider) {
 
 			// Log funding rate
 			if snapshot.Funding != nil {
-				log.Printf("  - Funding: rate=%.4f%%", snapshot.Funding.Rate)
+				log.Printf("  - Funding: rate=%.4f%%", snapshot.Funding.Rate*100)
 			}
 
 			// Log time series statistics

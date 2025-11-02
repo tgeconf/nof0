@@ -23,5 +23,5 @@ snapshot, err := provider.Snapshot(ctx, "BTC")
 if err != nil {
     log.Fatal(err)
 }
-fmt.Printf("price=%f 1h-change=%f%%\n", snapshot.Price.Last, snapshot.Change.OneHour)
+fmt.Printf("price=%f 1h-change=%.2f%%\n", snapshot.Price.Last, snapshot.Change.OneHour*100)
 ```

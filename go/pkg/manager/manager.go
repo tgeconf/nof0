@@ -391,7 +391,7 @@ func (m *Manager) ExecuteDecision(trader *VirtualTrader, decision *executorpkg.D
 	if trader == nil || decision == nil {
 		return errors.New("manager: execute decision requires trader and decision")
 	}
-	if decision.Symbol == "" {
+	if decision.Symbol == "" && decision.Action != "hold" && decision.Action != "wait" {
 		return errors.New("manager: decision missing symbol")
 	}
 	if decision.PositionSizeUSD < 0 {

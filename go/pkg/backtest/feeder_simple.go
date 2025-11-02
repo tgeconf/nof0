@@ -23,11 +23,11 @@ func (f *PriceFeeder) Next(ctx context.Context, symbol string) (*market.Snapshot
 	}
 	px := f.prices[f.idx]
 	f.idx++
-	var oneHour, fourHour float64
+	var oneHour, fourHour float64 // fractional change ratios (0.01 == +1%)
 	if f.idx >= 2 {
 		prev := f.prices[f.idx-2]
 		if prev != 0 {
-			oneHour = (px - prev) / prev * 100
+			oneHour = (px - prev) / prev
 			fourHour = oneHour // simple mirror for demo
 		}
 	}

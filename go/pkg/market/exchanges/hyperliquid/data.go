@@ -213,11 +213,12 @@ func buildLongerSeries(klines []Kline) (*market.SeriesBundle, *indicatorSnapshot
 	return series, snapshot
 }
 
+// calculatePriceChange returns the fractional change (e.g., 0.01 == +1%).
 func calculatePriceChange(currentPrice, previousPrice float64) float64 {
 	if previousPrice == 0 {
 		return 0
 	}
-	return (currentPrice - previousPrice) / previousPrice * 100
+	return (currentPrice - previousPrice) / previousPrice
 }
 
 func priceAt(klines []Kline, stepsBack int) float64 {

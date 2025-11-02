@@ -607,9 +607,9 @@ func main() {
     fmt.Printf("Current Price: %.2f
 ", data.CurrentPrice)
     fmt.Printf("1h Change: %.2f%%
-", data.PriceChange1h)
+", data.PriceChange1h*100)
     fmt.Printf("4h Change: %.2f%%
-", data.PriceChange4h)
+", data.PriceChange4h*100)
     fmt.Printf("EMA20: %.2f
 ", data.CurrentEMA20)
     fmt.Printf("MACD: %.2f
@@ -619,7 +619,7 @@ func main() {
     fmt.Printf("Open Interest: %.2f
 ", data.OpenInterest.Latest)
     fmt.Printf("Funding Rate: %.4f%%
-", data.FundingRate)
+", data.FundingRate*100)
 }
 ```
 

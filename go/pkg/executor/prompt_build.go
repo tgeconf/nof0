@@ -91,13 +91,13 @@ func formatMarketJSON(snaps map[string]*market.Snapshot) string {
 	// Reduce payload: include selected fields only
 	type Lite struct {
 		Price    float64            `json:"price"`
-		Change1h float64            `json:"change_1h"`
-		Change4h float64            `json:"change_4h"`
+		Change1h float64            `json:"change_1h"` // fractional change (0.01 == +1%)
+		Change4h float64            `json:"change_4h"` // fractional change (0.01 == +1%)
 		EMA      map[string]float64 `json:"ema,omitempty"`
 		RSI      map[string]float64 `json:"rsi,omitempty"`
 		MACD     float64            `json:"macd,omitempty"`
 		OILatest *float64           `json:"oi_latest,omitempty"`
-		Funding  *float64           `json:"funding,omitempty"`
+		Funding  *float64           `json:"funding,omitempty"` // funding rate fraction (0.01 == +1%)
 	}
 	out := make(map[string]Lite, len(snaps))
 	for sym, s := range snaps {

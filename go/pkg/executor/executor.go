@@ -147,20 +147,25 @@ func (e *BasicExecutor) logInputWarnings(input *Context) {
 	if input == nil {
 		return
 	}
+	const (
+		changeOneHourAnomalyPct  = 0.05 // fraction move (~5%) within 1 hour that triggers a warning
+		changeFourHourAnomalyPct = 0.10 // fraction move (~10%) within 4 hours that triggers a warning
+		fundingAnomalyThreshold  = 0.01 // funding rate (decimal form) threshold for alerting
+	)
 	for sym, snap := range input.MarketDataMap {
 		if snap == nil {
 			continue
 		}
-		if math.Abs(snap.Change.OneHour) > 0.05 {
+		if math.Abs(snap.Change.OneHour) > changeOneHourAnomalyPct {
 			logx.Slowf("executor: market change anomaly symbol=%s change_1h=%.4f change_4h=%.4f", sym, snap.Change.OneHour, snap.Change.FourHour)
 		}
-		if math.Abs(snap.Change.FourHour) > 0.1 {
+		if math.Abs(snap.Change.FourHour) > changeFourHourAnomalyPct {
 			logx.Slowf("executor: market 4h change anomaly symbol=%s change_4h=%.4f", sym, snap.Change.FourHour)
 		}
 		if snap.Price.Last <= 0 {
 			logx.Slowf("executor: non-positive price symbol=%s price=%f", sym, snap.Price.Last)
 		}
-		if snap.Funding != nil && math.Abs(snap.Funding.Rate) > 0.01 {
+		if snap.Funding != nil && math.Abs(snap.Funding.Rate) > fundingAnomalyThreshold {
 			logx.Slowf("executor: funding anomaly symbol=%s funding=%.6f", sym, snap.Funding.Rate)
 		}
 		checkIndicators(sym, snap)

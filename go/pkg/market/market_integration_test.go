@@ -215,8 +215,8 @@ func TestSnapshotDataStructure_Integration(t *testing.T) {
 	// 验证快照数据结构
 	assert.Equal(t, "BTCUSDT", snapshot.Symbol)
 	assert.InDelta(t, 50000.0, snapshot.Price.Last, 1e-9)
-	assert.InDelta(t, 1.5, snapshot.Change.OneHour, 1e-9)
-	assert.InDelta(t, 2.3, snapshot.Change.FourHour, 1e-9)
+	assert.InDelta(t, 0.015, snapshot.Change.OneHour, 1e-9)
+	assert.InDelta(t, 0.023, snapshot.Change.FourHour, 1e-9)
 	assert.NotNil(t, snapshot.OpenInterest)
 	assert.NotNil(t, snapshot.Funding)
 	assert.NotNil(t, snapshot.Intraday)

@@ -12,11 +12,13 @@ func ValidateDecisions(cfg *Config, ctx *Context, decisions []Decision) error {
 		return fmt.Errorf("executor: missing config for validation")
 	}
 	for i, d := range decisions {
-		if strings.TrimSpace(d.Symbol) == "" {
-			return fmt.Errorf("decision[%d]: symbol is required", i)
-		}
-		switch d.Action {
+		action := strings.TrimSpace(d.Action)
+		symbol := strings.TrimSpace(d.Symbol)
+		switch action {
 		case "open_long", "open_short":
+			if symbol == "" {
+				return fmt.Errorf("decision[%d]: symbol is required", i)
+			}
 			if d.Leverage <= 0 {
 				return fmt.Errorf("decision[%d]: leverage must be positive", i)
 			}
@@ -33,7 +35,7 @@ func ValidateDecisions(cfg *Config, ctx *Context, decisions []Decision) error {
 				return fmt.Errorf("decision[%d]: confidence below threshold", i)
 			}
 			// Price relationship & RR check
-			if d.Action == "open_long" {
+			if action == "open_long" {
 				if !(d.TakeProfit > d.EntryPrice && d.EntryPrice > d.StopLoss) {
 					return fmt.Errorf("decision[%d]: long requires TP>entry>SL", i)
 				}
@@ -155,11 +157,14 @@ func ValidateDecisions(cfg *Config, ctx *Context, decisions []Decision) error {
 				}
 			}
 		case "close_long", "close_short":
+			if symbol == "" {
+				return fmt.Errorf("decision[%d]: symbol is required", i)
+			}
 			if ctx == nil {
 				return fmt.Errorf("decision[%d]: context required to validate close action", i)
 			}
 			wantSide := "long"
-			if d.Action == "close_short" {
+			if action == "close_short" {
 				wantSide = "short"
 			}
 			has := false

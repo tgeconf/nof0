@@ -25,7 +25,7 @@ func TestCSVKlineFeeder(t *testing.T) {
 	assert.NoError(t, err, "Next2 should not error")
 	assert.True(t, ok, "Next2 should return ok=true")
 	assert.Equal(t, float64(101), snap.Price.Last, "second price should be 101")
-	assert.Greater(t, snap.Change.OneHour, 0.0, "OneHour change should be positive")
+	assert.InDelta(t, 0.01, snap.Change.OneHour, 1e-9, "OneHour change should equal fractional 1%%")
 
 	_, ok, err = feeder.Next(ctx, "BTC")
 	assert.NoError(t, err, "Next3 should not error")

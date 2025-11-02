@@ -14,7 +14,7 @@ type Provider interface {
 type Snapshot struct {
 	Symbol       string            // Exchange symbol as traded
 	Price        PriceInfo         // Latest price data
-	Change       ChangeInfo        // Percentage changes across time windows
+	Change       ChangeInfo        // Fractional changes across time windows (0.01 == +1%)
 	Indicators   IndicatorInfo     // Calculated technical indicators
 	OpenInterest *OpenInterestInfo // Derivatives interest data, if available
 	Funding      *FundingInfo      // Perpetual funding information, if available
@@ -39,8 +39,8 @@ type PriceInfo struct {
 
 // ChangeInfo describes percentage changes over standard windows.
 type ChangeInfo struct {
-	OneHour  float64
-	FourHour float64
+	OneHour  float64 // fractional change (0.01 == +1%)
+	FourHour float64 // fractional change (0.01 == +1%)
 }
 
 // IndicatorInfo aggregates computed indicator values.
@@ -58,7 +58,7 @@ type OpenInterestInfo struct {
 
 // FundingInfo captures perpetual funding rate data.
 type FundingInfo struct {
-	Rate float64 // expressed as percentage (e.g., 0.01 == 1%)
+	Rate float64 // fractional funding rate (0.01 == 1%)
 }
 
 // SeriesBundle provides supporting time series data for analysis layers.
