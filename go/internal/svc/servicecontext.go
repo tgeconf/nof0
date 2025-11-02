@@ -12,6 +12,7 @@ import (
 	"nof0-api/pkg/confkit"
 	exchangepkg "nof0-api/pkg/exchange"
 	_ "nof0-api/pkg/exchange/hyperliquid"
+	_ "nof0-api/pkg/exchange/sim"
 	executorpkg "nof0-api/pkg/executor"
 	llmpkg "nof0-api/pkg/llm"
 	managerpkg "nof0-api/pkg/manager"

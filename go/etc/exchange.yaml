@@ -14,3 +14,6 @@ providers:
     # Optional vault address for delegated signing.
     vault_address: ${HYPERLIQUID_VAULT_ADDRESS}
 
+  paper_trading:
+    type: sim
+    # In-memory simulator used for paper trading flows.

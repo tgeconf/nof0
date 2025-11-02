@@ -16,6 +16,7 @@ import (
 	"nof0-api/pkg/confkit"
 	exchangepkg "nof0-api/pkg/exchange"
 	_ "nof0-api/pkg/exchange/hyperliquid"
+	_ "nof0-api/pkg/exchange/sim"
 	llmpkg "nof0-api/pkg/llm"
 	managerpkg "nof0-api/pkg/manager"
 	marketpkg "nof0-api/pkg/market"
@@ -200,6 +201,34 @@ func applyExecutorPromptProfile(cfg *managerpkg.Config, profile string) error {
 	return nil
 }
 
+func applyPaperTradingOverride(cfg *managerpkg.Config, providerName string) error {
+	if cfg == nil {
+		return fmt.Errorf("manager config is nil")
+	}
+	providerName = strings.TrimSpace(providerName)
+	if providerName == "" {
+		return fmt.Errorf("paper trading provider name cannot be empty")
+	}
+	for i := range cfg.Traders {
+		cfg.Traders[i].ExchangeProvider = providerName
+	}
+	return nil
+}
+
+func applyPaperMarketOverride(cfg *managerpkg.Config, providerName string) error {
+	if cfg == nil {
+		return fmt.Errorf("manager config is nil")
+	}
+	providerName = strings.TrimSpace(providerName)
+	if providerName == "" {
+		return fmt.Errorf("paper trading market provider name cannot be empty")
+	}
+	for i := range cfg.Traders {
+		cfg.Traders[i].MarketProvider = providerName
+	}
+	return nil
+}
+
 func main() {
 	var (
 		exchangePath  = flag.String("exchange-config", "etc/exchange.yaml", "path to exchange provider configuration")
@@ -210,6 +239,8 @@ func main() {
 		allowedRaw    = flag.String("symbols", "BTC,ETH", "comma-separated list of tradable symbols")
 		totalEquity   = flag.Float64("equity", 100.0, "total deployable equity in USD")
 		promptProfile = flag.String("executor-prompt-profile", "default", "executor prompt profile (default|fast)")
+		paperTrading  = flag.Bool("paper-trading", false, "route trades to the in-memory simulator instead of live exchanges")
+		paperExchange = flag.String("paper-exchange-provider", "paper_trading", "exchange provider id to use when --paper-trading is enabled")
 	)
 	flag.Parse()
 	logx.MustSetup(logx.LogConf{})
@@ -274,6 +305,26 @@ func main() {
 	}
 	if err := applyExecutorPromptProfile(managerCfg, *promptProfile); err != nil {
 		fatalf("apply executor prompt profile: %v", err)
+	}
+	if *paperTrading {
+		name := strings.TrimSpace(*paperExchange)
+		if name == "" {
+			fatalf("paper trading requested but --paper-exchange-provider is empty")
+		}
+		if _, ok := exchangeProviders[name]; !ok {
+			fatalf("paper trading requested but exchange provider %s not found; update %s", name, *exchangePath)
+		}
+		if err := applyPaperTradingOverride(managerCfg, name); err != nil {
+			fatalf("apply paper trading override: %v", err)
+		}
+		marketName := "hyperliquid"
+		if _, ok := filteredMarkets[marketName]; !ok {
+			fatalf("paper trading requested but market provider %s not found; update %s", marketName, *marketPath)
+		}
+		if err := applyPaperMarketOverride(managerCfg, marketName); err != nil {
+			fatalf("apply paper trading market override: %v", err)
+		}
+		logx.Infof("paper trading enabled: exchange=%s market=%s", name, marketName)
 	}
 	if err := adaptManagerConfig(managerCfg, *totalEquity, allowedSymbols); err != nil {
 		fatalf("adapt manager config: %v", err)

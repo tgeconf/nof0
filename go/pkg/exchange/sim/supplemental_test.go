@@ -183,8 +183,7 @@ func TestSimProvider_ClosePosition(t *testing.T) {
 
 		positions, err := p.GetPositions(ctx)
 		assert.NoError(t, err)
-		assert.Len(t, positions, 1)
-		assert.Equal(t, "0", positions[0].Szi)
+		assert.Len(t, positions, 0)
 	})
 
 	// Test closing position with canonicalization
@@ -194,8 +193,7 @@ func TestSimProvider_ClosePosition(t *testing.T) {
 
 		positions, err := p.GetPositions(ctx)
 		assert.NoError(t, err)
-		assert.Len(t, positions, 1)
-		assert.Equal(t, "0", positions[0].Szi)
+		assert.Len(t, positions, 0)
 	})
 }
 
@@ -205,16 +203,19 @@ func TestSimProvider_UpdateLeverage(t *testing.T) {
 
 	// Test updating leverage
 	t.Run("update_leverage", func(t *testing.T) {
-		err := p.UpdateLeverage(ctx, 1, true, 10)
+		asset, err := p.GetAssetIndex(ctx, "BTC")
 		assert.NoError(t, err)
 
-		err = p.UpdateLeverage(ctx, 1, false, 5)
+		err = p.UpdateLeverage(ctx, asset, true, 10)
+		assert.NoError(t, err)
+
+		err = p.UpdateLeverage(ctx, asset, false, 5)
 		assert.NoError(t, err)
 
 		// Verify leverage was set by checking that no error occurs
 		// (the leverage is used internally when placing orders)
 		_, err = p.PlaceOrder(ctx, exchange.Order{
-			Asset:   1,
+			Asset:   asset,
 			IsBuy:   true,
 			LimitPx: "50000",
 			Sz:      "0.01",
@@ -355,7 +356,7 @@ func TestSimProvider_MultipleCoins(t *testing.T) {
 		assert.Equal(t, "BTC", btcPos.Coin)
 		assert.Equal(t, "0.01", btcPos.Szi)
 		assert.Equal(t, "ETH", ethPos.Coin)
-		assert.Equal(t, "1.0", ethPos.Szi)
+		assert.Equal(t, "1", ethPos.Szi)
 
 		// Close BTC position
 		err = p.ClosePosition(ctx, "BTC")
@@ -364,15 +365,10 @@ func TestSimProvider_MultipleCoins(t *testing.T) {
 		// Verify only ETH position remains
 		positions, err = p.GetPositions(ctx)
 		assert.NoError(t, err)
-		assert.Len(t, positions, 2) // Still 2 entries, but BTC position is closed
+		assert.Len(t, positions, 1)
 
-		for _, pos := range positions {
-			if pos.Coin == "BTC" {
-				assert.Equal(t, "0", pos.Szi)
-			} else if pos.Coin == "ETH" {
-				assert.Equal(t, "1.0", pos.Szi)
-			}
-		}
+		assert.Equal(t, "ETH", positions[0].Coin)
+		assert.Equal(t, "1", positions[0].Szi)
 	})
 }
 

@@ -3,43 +3,65 @@ package sim
 import (
 	"context"
 	"fmt"
-	"math/big"
+	"math"
+	"sort"
+	"strconv"
 	"strings"
 	"sync"
 
 	"nof0-api/pkg/exchange"
 )
 
-// Provider is a minimal in-memory simulator implementing exchange.Provider.
+const (
+	defaultInitialEquity = 100000.0
+	defaultFallbackPrice = 100.0
+)
+
+// Provider is a paper-trading exchange implementation that keeps positions,
+// equity and risk metrics in-memory.
 type Provider struct {
-	mu          sync.Mutex
+	mu sync.Mutex
+
 	nextAssetID int
-	// maps canonical coin -> asset index
-	assetIndex map[string]int
-	// positions by coin symbol (canonical)
-	positions map[string]exchange.Position
-	// last known price per coin (string value)
-	lastPx map[string]string
-	// per-asset leverage
-	leverage map[int]exchange.Leverage
+
+	assetIndex  map[string]int // symbol -> asset id
+	assetSymbol map[int]string // asset id -> symbol
+	leverage    map[int]exchange.Leverage
+
+	markPx    map[string]float64 // latest mark price per symbol
+	positions map[string]*positionState
+
+	initialEquity float64
+	cash          float64
 }
 
-// New constructs a new simulator instance.
+type positionState struct {
+	Coin  string
+	Qty   float64 // positive long, negative short
+	Entry float64 // average entry price
+}
+
+// New constructs a new simulator instance with default equity.
 func New() *Provider {
 	return &Provider{
-		nextAssetID: 1,
-		assetIndex:  make(map[string]int),
-		positions:   make(map[string]exchange.Position),
-		lastPx:      make(map[string]string),
-		leverage:    make(map[int]exchange.Leverage),
+		nextAssetID:   1,
+		assetIndex:    make(map[string]int),
+		assetSymbol:   make(map[int]string),
+		leverage:      make(map[int]exchange.Leverage),
+		markPx:        make(map[string]float64),
+		positions:     make(map[string]*positionState),
+		initialEquity: defaultInitialEquity,
+		cash:          defaultInitialEquity,
 	}
 }
 
 func canonical(coin string) string { return strings.ToUpper(strings.TrimSpace(coin)) }
 
+// GetAssetIndex resolves a stable asset identifier for the provided coin.
 func (p *Provider) GetAssetIndex(ctx context.Context, coin string) (int, error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
+
 	c := canonical(coin)
 	if id, ok := p.assetIndex[c]; ok {
 		return id, nil
@@ -47,18 +69,42 @@ func (p *Provider) GetAssetIndex(ctx context.Context, coin string) (int, error) 
 	id := p.nextAssetID
 	p.nextAssetID++
 	p.assetIndex[c] = id
+	p.assetSymbol[id] = c
 	return id, nil
 }
 
+// SetMarkPrice updates the reference price used for unrealised PnL and IOC fills.
+func (p *Provider) SetMarkPrice(ctx context.Context, coin string, price float64) error {
+	if price <= 0 {
+		return fmt.Errorf("sim: mark price must be positive")
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.markPx[canonical(coin)] = price
+	return nil
+}
+
+// PlaceOrder synchronously fills an IOC-like order at the provided limit price.
 func (p *Provider) PlaceOrder(ctx context.Context, order exchange.Order) (*exchange.OrderResponse, error) {
+	if order.Sz == "" {
+		return nil, fmt.Errorf("sim: order size is required")
+	}
+	price, err := strconv.ParseFloat(strings.TrimSpace(order.LimitPx), 64)
+	if err != nil || price <= 0 {
+		return nil, fmt.Errorf("sim: invalid limit price %q", order.LimitPx)
+	}
+	size, err := strconv.ParseFloat(strings.TrimSpace(order.Sz), 64)
+	if err != nil || size <= 0 {
+		return nil, fmt.Errorf("sim: invalid size %q", order.Sz)
+	}
+
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
-	// Find coin by asset index
-	var coin string
-	for c, id := range p.assetIndex {
+	coin := ""
+	for sym, id := range p.assetIndex {
 		if id == order.Asset {
-			coin = c
+			coin = sym
 			break
 		}
 	}
@@ -66,30 +112,28 @@ func (p *Provider) PlaceOrder(ctx context.Context, order exchange.Order) (*excha
 		return nil, fmt.Errorf("sim: unknown asset index %d", order.Asset)
 	}
 
-	// Update position size using precise decimal math on strings to avoid
-	// floating point artefacts in tests (e.g. 0.010000000000000002).
-	pos := p.positions[coin]
-	pos.Coin = coin
-	pos.Szi = addSignedDecimal(pos.Szi, order.Sz, order.IsBuy)
-	// keep a copy for entry price
-	entryPx := order.LimitPx
-	pos.EntryPx = &entryPx
-	// store last price
-	p.lastPx[coin] = order.LimitPx
-	// keep leverage if set
-	if lev, ok := p.leverage[order.Asset]; ok {
-		pos.Leverage = lev
+	realized, filled, err := p.applyOrderLocked(coin, price, size, order.IsBuy, order.ReduceOnly)
+	if err != nil {
+		return nil, err
 	}
-	p.positions[coin] = pos
+	if realized != 0 {
+		p.cash += realized
+	}
+	if filled > 0 {
+		p.markPx[coin] = price
+	}
 
-	// Synchronously mark as filled
 	resp := &exchange.OrderResponse{
 		Status: "ok",
 		Response: exchange.OrderResponseData{
 			Type: "order",
 			Data: exchange.OrderResponseDataDetail{
 				Statuses: []exchange.OrderStatusResponse{{
-					Filled: &exchange.FilledOrder{TotalSz: order.Sz, AvgPx: order.LimitPx, Oid: 1},
+					Filled: &exchange.FilledOrder{
+						TotalSz: formatDecimal(filled),
+						AvgPx:   formatDecimal(price),
+						Oid:     1,
+					},
 				}},
 			},
 		},
@@ -97,189 +141,321 @@ func (p *Provider) PlaceOrder(ctx context.Context, order exchange.Order) (*excha
 	return resp, nil
 }
 
+func (p *Provider) applyOrderLocked(coin string, price, size float64, isBuy, reduceOnly bool) (float64, float64, error) {
+	if price <= 0 {
+		return 0, 0, fmt.Errorf("sim: price must be positive")
+	}
+	if size <= 0 {
+		return 0, 0, fmt.Errorf("sim: size must be positive")
+	}
+
+	state := p.positions[coin]
+	if reduceOnly {
+		if state == nil || state.Qty == 0 {
+			return 0, 0, nil
+		}
+	} else if state == nil {
+		state = &positionState{Coin: coin}
+		p.positions[coin] = state
+	}
+
+	execSize := size
+	delta := execSize
+	if !isBuy {
+		delta = -execSize
+	}
+
+	if reduceOnly {
+		if state.Qty*delta > 0 {
+			return 0, 0, fmt.Errorf("sim: reduce-only order would increase position")
+		}
+		maxQty := math.Abs(state.Qty)
+		if execSize > maxQty {
+			execSize = maxQty
+		}
+		if execSize <= 0 {
+			return 0, 0, nil
+		}
+		delta = execSize
+		if !isBuy {
+			delta = -execSize
+		}
+	}
+
+	oldQty := state.Qty
+	newQty := oldQty + delta
+
+	realized := 0.0
+	if oldQty != 0 && oldQty*delta < 0 {
+		closeQty := math.Min(math.Abs(oldQty), math.Abs(delta))
+		dir := 1.0
+		if oldQty < 0 {
+			dir = -1.0
+		}
+		realized = closeQty * (price - state.Entry) * dir
+	}
+
+	switch {
+	case oldQty == 0:
+		state.Entry = price
+	case oldQty*delta > 0:
+		state.Entry = ((oldQty * state.Entry) + (delta * price)) / newQty
+	case oldQty*delta < 0:
+		if newQty == 0 {
+			state.Entry = price
+		} else if oldQty*newQty < 0 {
+			state.Entry = price
+		}
+	}
+
+	state.Qty = newQty
+	if math.Abs(state.Qty) < 1e-10 {
+		state.Qty = 0
+	}
+	if state.Qty == 0 {
+		state.Entry = 0
+		delete(p.positions, coin)
+	}
+	return realized, math.Abs(delta), nil
+}
+
+// CancelOrder is a no-op for the simulator (orders fill immediately).
 func (p *Provider) CancelOrder(ctx context.Context, asset int, oid int64) error { return nil }
 
+// GetOpenOrders always returns an empty slice because fills are synchronous.
 func (p *Provider) GetOpenOrders(ctx context.Context) ([]exchange.OrderStatus, error) {
 	return nil, nil
 }
 
+// IOCMarket emulates a market IOC order around the latest mark price.
+func (p *Provider) IOCMarket(ctx context.Context, coin string, isBuy bool, qty float64, slippage float64, reduceOnly bool) (*exchange.OrderResponse, error) {
+	if qty <= 0 {
+		return nil, fmt.Errorf("sim: IOCMarket qty must be positive")
+	}
+	p.mu.Lock()
+	price := p.resolveMarkPriceLocked(canonical(coin))
+	if price <= 0 {
+		price = defaultFallbackPrice
+	}
+	if slippage <= 0 {
+		slippage = 0.002
+	}
+	if isBuy {
+		price *= 1 + slippage
+	} else {
+		price *= math.Max(0, 1-slippage)
+	}
+	p.mu.Unlock()
+
+	order := exchange.Order{
+		Asset:      0, // resolved in PlaceOrder
+		IsBuy:      isBuy,
+		LimitPx:    formatDecimal(price),
+		Sz:         formatDecimal(qty),
+		ReduceOnly: reduceOnly,
+		OrderType:  exchange.OrderType{Limit: &exchange.LimitOrderType{TIF: "Ioc"}},
+	}
+	assetIdx, err := p.GetAssetIndex(ctx, coin)
+	if err != nil {
+		return nil, err
+	}
+	order.Asset = assetIdx
+	return p.PlaceOrder(ctx, order)
+}
+
+// GetPositions returns the current open positions with mark-to-market values.
 func (p *Provider) GetPositions(ctx context.Context) ([]exchange.Position, error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	out := make([]exchange.Position, 0, len(p.positions))
-	for _, pos := range p.positions {
-		out = append(out, pos)
-	}
-	return out, nil
+
+	positions, _, _, _ := p.buildAccountSnapshotLocked()
+	return positions, nil
 }
 
+// ClosePosition fully closes the position for the given coin at the latest mark price.
 func (p *Provider) ClosePosition(ctx context.Context, coin string) error {
-	p.mu.Lock()
-	defer p.mu.Unlock()
 	c := canonical(coin)
-	pos := p.positions[c]
-	pos.Szi = "0"
-	p.positions[c] = pos
-	return nil
-}
-
-func (p *Provider) UpdateLeverage(ctx context.Context, asset int, isCross bool, leverage int) error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	p.leverage[asset] = exchange.Leverage{Type: map[bool]string{true: "cross", false: "isolated"}[isCross], Value: leverage}
-	// Ensure the asset index exists to allow immediate use in orders when
-	// callers configure leverage before requesting an asset index.
-	found := false
-	for _, id := range p.assetIndex {
-		if id == asset {
-			found = true
-			break
-		}
+
+	state := p.positions[c]
+	if state == nil || state.Qty == 0 {
+		return nil
 	}
-	if !found {
-		// Create a placeholder coin mapping for this asset id.
-		key := fmt.Sprintf("ASSET_%d", asset)
-		if _, ok := p.assetIndex[key]; !ok {
-			p.assetIndex[key] = asset
-		}
+	price := p.resolveMarkPriceLocked(c)
+	if price <= 0 {
+		price = state.Entry
+	}
+	size := math.Abs(state.Qty)
+	isBuy := state.Qty < 0
+	realized, filled, err := p.applyOrderLocked(c, price, size, isBuy, false)
+	if err != nil {
+		return err
+	}
+	if realized != 0 {
+		p.cash += realized
+	}
+	if filled > 0 {
+		p.markPx[c] = price
 	}
 	return nil
 }
 
+// UpdateLeverage stores leverage preferences for later margin calculations.
+func (p *Provider) UpdateLeverage(ctx context.Context, asset int, isCross bool, leverage int) error {
+	if leverage <= 0 {
+		return fmt.Errorf("sim: leverage must be positive")
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	mode := map[bool]string{true: "cross", false: "isolated"}[isCross]
+	p.leverage[asset] = exchange.Leverage{Type: mode, Value: leverage}
+	return nil
+}
+
+// GetAccountState returns a snapshot with equity, margin usage and open positions.
 func (p *Provider) GetAccountState(ctx context.Context) (*exchange.AccountState, error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
+
+	positions, unrealized, notional, margin := p.buildAccountSnapshotLocked()
+	equity := p.cash + unrealized
 	state := &exchange.AccountState{
-		MarginSummary:      exchange.MarginSummary{AccountValue: "100000", TotalMarginUsed: "0", TotalNtlPos: "0", TotalRawUSD: "0"},
-		CrossMarginSummary: exchange.CrossMarginSummary{AccountValue: "100000", TotalMarginUsed: "0", TotalNtlPos: "0", TotalRawUSD: "0"},
-	}
-	for _, pos := range p.positions {
-		state.AssetPositions = append(state.AssetPositions, pos)
+		MarginSummary: exchange.MarginSummary{
+			AccountValue:    formatDecimal(equity),
+			TotalMarginUsed: formatDecimal(margin),
+			TotalNtlPos:     formatDecimal(notional),
+			TotalRawUSD:     formatDecimal(notional),
+		},
+		CrossMarginSummary: exchange.CrossMarginSummary{
+			AccountValue:    formatDecimal(equity),
+			TotalMarginUsed: formatDecimal(margin),
+			TotalNtlPos:     formatDecimal(notional),
+			TotalRawUSD:     formatDecimal(notional),
+		},
+		AssetPositions: positions,
 	}
 	return state, nil
 }
 
+// GetAccountValue returns the current equity (cash + unrealised PnL).
 func (p *Provider) GetAccountValue(ctx context.Context) (float64, error) {
-	return 100000.0, nil
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	_, unrealized, _, _ := p.buildAccountSnapshotLocked()
+	return p.cash + unrealized, nil
 }
 
-// Registry hook for exchange.Config
+// FormatPrice normalises price formatting to 8 decimal places.
+func (p *Provider) FormatPrice(ctx context.Context, coin string, price float64) (string, error) {
+	if price <= 0 {
+		return "", fmt.Errorf("sim: price must be positive")
+	}
+	return formatDecimal(price), nil
+}
+
+// FormatSize normalises size formatting to 8 decimal places.
+func (p *Provider) FormatSize(ctx context.Context, coin string, size float64) (string, error) {
+	if size <= 0 {
+		return "", fmt.Errorf("sim: size must be positive")
+	}
+	return formatDecimal(size), nil
+}
+
+// CancelAllBySymbol is a no-op for the simulator.
+func (p *Provider) CancelAllBySymbol(ctx context.Context, coin string) error {
+	return nil
+}
+
+// Registry hook for exchange.Config.
 func init() {
 	exchange.RegisterProvider("sim", func(name string, cfg *exchange.ProviderConfig) (exchange.Provider, error) {
 		return New(), nil
 	})
 }
 
-// addSignedDecimal adds or subtracts two base-10 string decimals and returns a
-// canonical string representation with minimal trailing zeros. If the result
-// is an integer and the right-hand operand contained a decimal point, a single
-// trailing ".0" is preserved to match test expectations.
-func addSignedDecimal(current, delta string, add bool) string {
-	// Normalize inputs
-	curInt, curScale := toScaledInt(current)
-	delInt, delScale := toScaledInt(delta)
-	// Use the scale of the delta to influence formatting when integral.
-	rhsHadDecimal := strings.Contains(delta, ".")
-
-	// Align scales
-	scale := curScale
-	if delScale > scale {
-		scale = delScale
+func (p *Provider) resolveMarkPriceLocked(coin string) float64 {
+	if price, ok := p.markPx[coin]; ok && price > 0 {
+		return price
 	}
-	curInt = scaleUp(curInt, scale-curScale)
-	delInt = scaleUp(delInt, scale-delScale)
-	if !add {
-		delInt.Neg(&delInt)
+	if state, ok := p.positions[coin]; ok && state.Entry > 0 {
+		return state.Entry
 	}
+	return defaultFallbackPrice
+}
 
-	// Sum
-	sum := new(big.Int).Add(&curInt, &delInt)
+func (p *Provider) buildAccountSnapshotLocked() ([]exchange.Position, float64, float64, float64) {
+	positions := make([]exchange.Position, 0, len(p.positions))
+	totalUnreal := 0.0
+	totalNotional := 0.0
+	totalMargin := 0.0
 
-	// Format with minimal trailing zeros; keep one decimal if rhs had decimal and result integral
-	s := fromScaledInt(*sum, scale)
-	if strings.Contains(s, ".") {
-		// Trim trailing zeros
-		s = strings.TrimRight(s, "0")
-		if strings.HasSuffix(s, ".") {
-			if rhsHadDecimal {
-				s += "0"
-			} else {
-				s = strings.TrimSuffix(s, ".")
-			}
+	for coin, state := range p.positions {
+		qty := state.Qty
+		mark := p.resolveMarkPriceLocked(coin)
+		notional := math.Abs(qty * mark)
+		unreal := qty * (mark - state.Entry)
+		lev := p.leverageForCoinLocked(coin)
+		margin := notional
+		if lev.Value > 0 {
+			margin = notional / float64(lev.Value)
 		}
+
+		totalUnreal += unreal
+		totalNotional += notional
+		totalMargin += margin
+
+		var entryPtr *string
+		if state.Entry > 0 {
+			entry := formatDecimal(state.Entry)
+			entryPtr = new(string)
+			*entryPtr = entry
+		}
+		roe := "0"
+		if margin > 0 {
+			roe = formatDecimal((unreal / margin) * 100)
+		}
+		pos := exchange.Position{
+			Coin:           coin,
+			EntryPx:        entryPtr,
+			PositionValue:  formatDecimal(notional),
+			Szi:            formatDecimal(qty),
+			UnrealizedPnl:  formatDecimal(unreal),
+			ReturnOnEquity: roe,
+			Leverage:       lev,
+		}
+		positions = append(positions, pos)
+	}
+
+	sort.Slice(positions, func(i, j int) bool {
+		return positions[i].Coin < positions[j].Coin
+	})
+	return positions, totalUnreal, totalNotional, totalMargin
+}
+
+func (p *Provider) leverageForCoinLocked(coin string) exchange.Leverage {
+	if id, ok := p.assetIndex[coin]; ok {
+		if lev, exists := p.leverage[id]; exists {
+			return lev
+		}
+	}
+	return exchange.Leverage{Type: "cross", Value: 1}
+}
+
+func formatDecimal(v float64) string {
+	if math.IsNaN(v) || math.IsInf(v, 0) {
+		return "0"
+	}
+	if math.Abs(v) < 1e-9 {
+		return "0"
+	}
+	s := strconv.FormatFloat(v, 'f', 8, 64)
+	s = strings.TrimRight(s, "0")
+	if strings.HasSuffix(s, ".") {
+		s = strings.TrimSuffix(s, ".")
+	}
+	if s == "-0" {
+		return "0"
 	}
 	return s
-}
-
-// Helpers for scaled integer decimal arithmetic
-// (implemented locally to avoid external dependencies)
-
-// toScaledInt parses a base-10 decimal string into an integer and scale.
-// "1.230" -> (1230, 3). Empty or invalid strings treat as 0.
-func toScaledInt(s string) (big.Int, int) {
-	s = strings.TrimSpace(s)
-	if s == "" {
-		return *big.NewInt(0), 0
-	}
-	neg := false
-	if strings.HasPrefix(s, "+") {
-		s = s[1:]
-	} else if strings.HasPrefix(s, "-") {
-		neg = true
-		s = s[1:]
-	}
-	scale := 0
-	if dot := strings.IndexByte(s, '.'); dot >= 0 {
-		scale = len(s) - dot - 1
-		s = s[:dot] + s[dot+1:]
-	}
-	// Remove leading zeros to keep big.Int small
-	s = strings.TrimLeft(s, "0")
-	if s == "" {
-		return *big.NewInt(0), scale
-	}
-	n := new(big.Int)
-	if _, ok := n.SetString(s, 10); !ok {
-		return *big.NewInt(0), 0
-	}
-	if neg {
-		n.Neg(n)
-	}
-	return *n, scale
-}
-
-func scaleUp(n big.Int, by int) big.Int {
-	if by <= 0 {
-		return n
-	}
-	ten := big.NewInt(10)
-	m := new(big.Int).Set(&n)
-	for i := 0; i < by; i++ {
-		m.Mul(m, ten)
-	}
-	return *m
-}
-
-func fromScaledInt(n big.Int, scale int) string {
-	neg := n.Sign() < 0
-	if neg {
-		n.Neg(&n)
-	}
-	s := n.String()
-	if scale == 0 {
-		if neg {
-			return "-" + s
-		}
-		return s
-	}
-	// Ensure string has at least scale+1 digits
-	if len(s) <= scale {
-		s = strings.Repeat("0", scale-len(s)+1) + s
-	}
-	i := len(s) - scale
-	out := s[:i] + "." + s[i:]
-	if neg {
-		out = "-" + out
-	}
-	return out
 }

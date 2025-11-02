@@ -409,6 +409,13 @@ func (m *Manager) ExecuteDecision(trader *VirtualTrader, decision *executorpkg.D
 	if decision.Action == "close_long" || decision.Action == "close_short" {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
+		if setter, ok := trader.ExchangeProvider.(interface {
+			SetMarkPrice(context.Context, string, float64) error
+		}); ok {
+			if snap, err := trader.MarketProvider.Snapshot(ctx, decision.Symbol); err == nil && snap != nil && snap.Price.Last > 0 {
+				_ = setter.SetMarkPrice(ctx, decision.Symbol, snap.Price.Last)
+			}
+		}
 		// Attempt to cancel resting orders via optional extension
 		if p, ok := trader.ExchangeProvider.(interface {
 			CancelAllBySymbol(context.Context, string) error
@@ -466,6 +473,14 @@ func (m *Manager) ExecuteDecision(trader *VirtualTrader, decision *executorpkg.D
 	}
 
 	// Compute size and direction.
+	if setter, ok := trader.ExchangeProvider.(interface {
+		SetMarkPrice(context.Context, string, float64) error
+	}); ok {
+		if err := setter.SetMarkPrice(ctx, decision.Symbol, price); err != nil {
+			logx.WithContext(ctx).Errorf("manager: set mark price trader=%s symbol=%s err=%v", trader.ID, decision.Symbol, err)
+		}
+	}
+
 	qty := decision.PositionSizeUSD / price
 	if qty <= 0 || math.IsNaN(qty) || math.IsInf(qty, 0) {
 		return fmt.Errorf("manager: invalid position size for %s: qty=%.6f", decision.Symbol, qty)
