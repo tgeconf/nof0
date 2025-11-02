@@ -229,6 +229,23 @@ func TestMaybeRefreshAssetDirectory(t *testing.T) {
 	})
 }
 
+func TestRoundPriceToSigFigs_IntPreservesMagnitude(t *testing.T) {
+	t.Run("large_price_keeps_trailing_zero", func(t *testing.T) {
+		got := RoundPriceToSigFigs(110823.5, 5)
+		assert.Equal(t, "110820", got)
+	})
+
+	t.Run("no_fractional_digits", func(t *testing.T) {
+		got := RoundPriceToSigFigs(25000, 5)
+		assert.Equal(t, "25000", got)
+	})
+
+	t.Run("fractional_digits_trimmed", func(t *testing.T) {
+		got := RoundPriceToSigFigs(123.456789, 5)
+		assert.Equal(t, "123.46", got)
+	})
+}
+
 func TestIsFinite(t *testing.T) {
 	tests := []struct {
 		name     string

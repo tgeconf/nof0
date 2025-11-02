@@ -160,8 +160,14 @@ func RoundPriceToSigFigs(price float64, sigfigs int) string {
 	decExp := math.Floor(math.Log10(absr))
 	decimals := int(math.Max(0, float64(sigfigs-1)-decExp))
 	s := strconv.FormatFloat(rounded, 'f', decimals, 64)
-	s = strings.TrimRight(s, "0")
-	s = strings.TrimRight(s, ".")
+	if decimals > 0 {
+		// Only trim trailing zeros when fractional digits are present. Hyperliquid strictly validates
+		// the magnitude we submit; previously we stripped zeros from whole-number prices
+		// (e.g. 110820 -> 11082) which turned a ~110k quote into a ~11k quote and the exchange
+		// would reject the payload with HTTP 422 "Failed to deserialize the JSON body into the target type".
+		s = strings.TrimRight(s, "0")
+		s = strings.TrimRight(s, ".")
+	}
 	if s == "" || s == "-" {
 		return "0"
 	}

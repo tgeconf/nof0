@@ -2,6 +2,8 @@ package manager
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -289,6 +291,8 @@ func (m *Manager) RunTradingLoop(ctx context.Context) error {
 
 				ectx := m.buildExecutorContext(t)
 				out, decisionErr := t.Executor.GetFullDecision(&ectx)
+				// NOTE: BasicExecutor will still return a FullDecision even when validation fails (decisionErr != nil),
+				// so call sites must treat decisionErr as authoritative and avoid executing the payload until it passes.
 
 				// Prepare journaling containers
 				var decisionsJSON string
@@ -296,6 +300,7 @@ func (m *Manager) RunTradingLoop(ctx context.Context) error {
 				allOK := true
 				decisionCount := 0
 				if out != nil {
+					// decisionErr can be non-nil here; when wiring retries/guards make sure we don't execute decisions that failed validation.
 					decisionCount = len(out.Decisions)
 					if b, e := json.Marshal(out.Decisions); e == nil {
 						decisionsJSON = string(b)
@@ -473,6 +478,8 @@ func (m *Manager) ExecuteDecision(trader *VirtualTrader, decision *executorpkg.D
 	}); ok {
 		if s, err := p.FormatPrice(ctx, decision.Symbol, price); err == nil && s != "" {
 			priceStr = s
+		} else if err != nil {
+			logx.WithContext(ctx).Infof("manager: format price fallback trader=%s symbol=%s price=%.8f err=%v", trader.ID, decision.Symbol, price, err)
 		}
 	}
 	if p, ok := trader.ExchangeProvider.(interface {
@@ -480,8 +487,15 @@ func (m *Manager) ExecuteDecision(trader *VirtualTrader, decision *executorpkg.D
 	}); ok {
 		if s, err := p.FormatSize(ctx, decision.Symbol, qty); err == nil && s != "" {
 			sizeStr = s
+		} else if err != nil {
+			logx.WithContext(ctx).Infof("manager: format size fallback trader=%s symbol=%s qty=%.8f err=%v", trader.ID, decision.Symbol, qty, err)
 		}
 	}
+
+	logx.WithContext(ctx).Infof(
+		"manager: trader %s prepared order symbol=%s is_buy=%t raw_price=%.8f price_str=%s raw_qty=%.8f size_str=%s asset_idx=%d leverage=%d",
+		trader.ID, decision.Symbol, isBuy, price, priceStr, qty, sizeStr, assetIdx, lev,
+	)
 
 	// Submit a limit IOC order approximating a marketable order.
 	cloid := buildCloid(trader.ID, decision.Symbol, decision.Action, qty, time.Now())
@@ -676,7 +690,11 @@ func (m *Manager) writeJournalRecord(t *VirtualTrader, ectx *executorpkg.Context
 func buildCloid(traderID, symbol, action string, qty float64, now time.Time) string {
 	// Bucket time to minute to avoid collision across cycles; include rounded qty to 6 dp.
 	ts := now.UTC().Format("20060102T1504")
-	return fmt.Sprintf("%s|%s|%s|%.6f|%s", traderID, strings.ToUpper(symbol), action, qty, ts)
+	raw := fmt.Sprintf("%s|%s|%s|%.6f|%s", traderID, strings.ToUpper(symbol), action, qty, ts)
+	sum := sha256.Sum256([]byte(raw))
+	// Hyperliquid requires CLOIDs to be 0x-prefixed 32 hex chars (16 bytes). Feeding human-readable
+	// strings back into the API triggers HTTP 422s, so we hash and truncate to stay deterministic yet compliant.
+	return "0x" + hex.EncodeToString(sum[:16])
 }
 
 // buildExecutorContext collects a richer snapshot for the executor prompt and validation.
