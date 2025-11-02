@@ -12,6 +12,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/zeromicro/go-zero/core/logx"
+
 	"nof0-api/pkg/exchange"
 	executorpkg "nof0-api/pkg/executor"
 	"nof0-api/pkg/journal"
@@ -142,7 +144,16 @@ func (m *Manager) RegisterTrader(cfg TraderConfig) (*VirtualTrader, error) {
 	if m == nil {
 		return nil, errors.New("manager: nil manager")
 	}
-	if err := (&Config{Traders: []TraderConfig{cfg}}).Validate(); err != nil {
+	tempCfg := &Config{
+		Manager:    ManagerConfig{},
+		Traders:    []TraderConfig{cfg},
+		Monitoring: MonitoringConfig{},
+	}
+	if m.config != nil {
+		tempCfg.Manager = m.config.Manager
+		tempCfg.Monitoring = m.config.Monitoring
+	}
+	if err := tempCfg.Validate(); err != nil {
 		// Reuse config validation on a temporary wrapper to validate the trader.
 		return nil, err
 	}
@@ -197,12 +208,14 @@ func (m *Manager) RegisterTrader(cfg TraderConfig) (*VirtualTrader, error) {
 			dir = fmt.Sprintf("journal/%s", cfg.ID)
 		}
 		vt.Journal = journal.NewWriter(dir)
+		logx.Infof("manager: trader %s journaling enabled dir=%s", cfg.ID, dir)
 	}
 
 	m.traders[cfg.ID] = vt
 	if cfg.AutoStart {
 		_ = vt.Start()
 	}
+	logx.Infof("manager: registered trader id=%s name=%s allocation=%.2f%% exchange=%s market=%s auto_start=%t", vt.ID, vt.Name, cfg.AllocationPct, cfg.ExchangeProvider, cfg.MarketProvider, cfg.AutoStart)
 	return vt, nil
 }
 
@@ -216,6 +229,7 @@ func (m *Manager) UnregisterTrader(traderID string) error {
 	}
 	_ = t.Stop() // Best-effort stop; ignore error for MVP.
 	delete(m.traders, traderID)
+	logx.Infof("manager: unregistered trader id=%s", traderID)
 	return nil
 }
 
@@ -238,14 +252,17 @@ func (m *Manager) RunTradingLoop(ctx context.Context) error {
 	if m == nil {
 		return errors.New("manager: nil manager")
 	}
+	logx.WithContext(ctx).Infof("manager: trading loop starting tick=1s active_traders=%d", len(m.GetActiveTraders()))
 	ticker := time.NewTicker(1 * time.Second)
 	defer ticker.Stop()
 
 	for {
 		select {
 		case <-ctx.Done():
+			logx.WithContext(ctx).Infof("manager: trading loop stopping (context): %v", ctx.Err())
 			return ctx.Err()
 		case <-m.stopChan:
+			logx.WithContext(ctx).Infof("manager: trading loop stopping (stop signal)")
 			return nil
 		case <-ticker.C:
 			traders := m.GetActiveTraders()
@@ -253,6 +270,7 @@ func (m *Manager) RunTradingLoop(ctx context.Context) error {
 				if !t.ShouldMakeDecision() {
 					continue
 				}
+				cycleStart := time.Now()
 				// Sharpe gating
 				if t.ExecGuards.SharpePauseThreshold != 0 && t.ExecGuards.PauseDurationOnBreach > 0 && t.Performance != nil {
 					if t.Performance.SharpeRatio < t.ExecGuards.SharpePauseThreshold {
@@ -261,6 +279,7 @@ func (m *Manager) RunTradingLoop(ctx context.Context) error {
 							t.PauseUntil = time.Now().Add(t.ExecGuards.PauseDurationOnBreach)
 						}
 						t.mu.Unlock()
+						logx.WithContext(ctx).Infof("manager: trader %s paused for Sharpe gating until %s", t.ID, t.PauseUntil.Format(time.RFC3339))
 						continue
 					}
 				}
@@ -269,13 +288,15 @@ func (m *Manager) RunTradingLoop(ctx context.Context) error {
 				t.Executor.UpdatePerformance(perfView)
 
 				ectx := m.buildExecutorContext(t)
-				out, err := t.Executor.GetFullDecision(&ectx)
+				out, decisionErr := t.Executor.GetFullDecision(&ectx)
 
 				// Prepare journaling containers
 				var decisionsJSON string
 				var actions []map[string]any
 				allOK := true
+				decisionCount := 0
 				if out != nil {
+					decisionCount = len(out.Decisions)
 					if b, e := json.Marshal(out.Decisions); e == nil {
 						decisionsJSON = string(b)
 					}
@@ -310,11 +331,15 @@ func (m *Manager) RunTradingLoop(ctx context.Context) error {
 							act["result"] = "error"
 							act["error"] = execErr.Error()
 							allOK = false
+							logx.WithContext(ctx).Errorf("manager: trader %s decision action=%s symbol=%s error=%v", t.ID, d.Action, d.Symbol, execErr)
 						}
 						actions = append(actions, act)
 					}
 				} else {
 					allOK = false
+					if decisionErr != nil {
+						logx.WithContext(ctx).Errorf("manager: trader %s decision generation failed: %v", t.ID, decisionErr)
+					}
 				}
 
 				// Update lightweight performance snapshot (success ratio proxy)
@@ -336,17 +361,29 @@ func (m *Manager) RunTradingLoop(ctx context.Context) error {
 
 				// Journal the cycle if configured
 				if t.Journal != nil && t.JournalEnabled {
-					_ = m.writeJournalRecord(t, &ectx, out, decisionsJSON, actions, err, allOK)
+					if jErr := m.writeJournalRecord(t, &ectx, out, decisionsJSON, actions, decisionErr, allOK); jErr != nil {
+						logx.WithContext(ctx).Errorf("manager: trader %s journal write failed: %v", t.ID, jErr)
+					} else {
+						logx.WithContext(ctx).Infof("manager: trader %s journal written prompt_digest=%s", t.ID, outPromptDigest(out))
+					}
 				}
 				t.RecordDecision(time.Now())
-				_ = m.SyncTraderPositions(t.ID)
+				if syncErr := m.SyncTraderPositions(t.ID); syncErr != nil {
+					logx.WithContext(ctx).Errorf("manager: trader %s sync positions error: %v", t.ID, syncErr)
+				}
+				logx.WithContext(ctx).Infof("manager: cycle trader=%s decisions=%d actions=%d ok=%t duration=%s", t.ID, decisionCount, len(actions), allOK && decisionErr == nil, time.Since(cycleStart).String())
 			}
 		}
 	}
 }
 
 // Stop signals the main loop to exit.
-func (m *Manager) Stop() { m.stopOnce.Do(func() { close(m.stopChan) }) }
+func (m *Manager) Stop() {
+	m.stopOnce.Do(func() {
+		logx.Info("manager: stop signal emitted")
+		close(m.stopChan)
+	})
+}
 
 // ExecuteDecision executes a single decision using trader's exchange provider.
 // Placeholder MVP: perform basic validation and return nil.
@@ -374,6 +411,7 @@ func (m *Manager) ExecuteDecision(trader *VirtualTrader, decision *executorpkg.D
 		if err := trader.ExchangeProvider.ClosePosition(ctx, decision.Symbol); err != nil {
 			return err
 		}
+		logx.Infof("manager: trader %s closed position symbol=%s action=%s", trader.ID, decision.Symbol, decision.Action)
 		// Mark cooldown timestamp on successful close
 		trader.mu.Lock()
 		trader.Cooldown[decision.Symbol] = time.Now()
@@ -459,6 +497,7 @@ func (m *Manager) ExecuteDecision(trader *VirtualTrader, decision *executorpkg.D
 	if _, err := trader.ExchangeProvider.PlaceOrder(ctx, order); err != nil {
 		return fmt.Errorf("manager: place order %s %s: %w", decision.Symbol, decision.Action, err)
 	}
+	logx.Infof("manager: trader %s submitted %s order symbol=%s notional=%.2f usd qty=%.6f cloid=%s", trader.ID, decision.Action, decision.Symbol, decision.PositionSizeUSD, qty, cloid)
 	// Configure reduce-only SL/TP best-effort
 	side := "LONG"
 	if !isBuy { // open_short
@@ -518,6 +557,7 @@ func (m *Manager) SyncTraderPositions(traderID string) error {
 	t.ResourceAlloc.AvailableBalanceUSD = math.Max(0, acctVal-marginUsed)
 	t.UpdatedAt = time.Now()
 	t.mu.Unlock()
+	logx.Infof("manager: trader %s equity=%.2f usd margin_used=%.2f usd avail=%.2f usd unreal_pnl=%.2f usd", traderID, acctVal, marginUsed, t.ResourceAlloc.AvailableBalanceUSD, unreal)
 	return nil
 }
 
@@ -529,6 +569,16 @@ func parseFloat(s string) float64 {
 		return v
 	}
 	return 0
+}
+
+func outPromptDigest(out *executorpkg.FullDecision) string {
+	if out == nil {
+		return ""
+	}
+	if strings.TrimSpace(out.UserPrompt) == "" {
+		return ""
+	}
+	return llm.DigestString(out.UserPrompt)
 }
 
 func parsePtrFloat(ps *string) float64 {

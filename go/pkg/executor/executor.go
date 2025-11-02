@@ -5,6 +5,8 @@ import (
 	"errors"
 	"time"
 
+	"github.com/zeromicro/go-zero/core/logx"
+
 	"nof0-api/pkg/llm"
 )
 
@@ -75,6 +77,8 @@ func (e *BasicExecutor) GetFullDecision(input *Context) (*FullDecision, error) {
 	if err != nil {
 		return nil, err
 	}
+	promptDigest := llm.DigestString(promptStr)
+	logx.Infof("executor: prompt rendered digest=%s candidates=%d positions=%d runtime_minutes=%d", promptDigest, len(input.CandidateCoins), len(input.Positions), input.RuntimeMinutes)
 
 	// Phase 2: Call LLM with structured output request.
 	req := &llm.ChatRequest{
@@ -88,16 +92,21 @@ func (e *BasicExecutor) GetFullDecision(input *Context) (*FullDecision, error) {
 	var out decisionContract
 	callCtx, cancel := context.WithTimeout(context.Background(), e.cfg.DecisionTimeout)
 	defer cancel()
+	callStart := time.Now()
 	_, err = e.llm.ChatStructured(callCtx, req, &out)
 	if err != nil {
+		logx.WithContext(callCtx).Errorf("executor: chat failed digest=%s duration=%s error=%v", promptDigest, time.Since(callStart), err)
 		return &FullDecision{UserPrompt: promptStr, CoTTrace: "", Decisions: nil, Timestamp: time.Now()}, err
 	}
+	logx.WithContext(callCtx).Infof("executor: chat completed digest=%s duration=%s", promptDigest, time.Since(callStart))
 
 	// Phase 3: Map & validate.
 	mapped := mapDecisionContract(out, input.Positions)
 	if err := ValidateDecisions(e.cfg, input, []Decision{mapped}); err != nil {
+		logx.Errorf("executor: decision validation failed digest=%s symbol=%s action=%s error=%v", promptDigest, mapped.Symbol, mapped.Action, err)
 		return &FullDecision{UserPrompt: promptStr, CoTTrace: "", Decisions: []Decision{mapped}, Timestamp: time.Now()}, err
 	}
+	logx.Infof("executor: decision validated digest=%s symbol=%s action=%s notional=%.2f confidence=%d", promptDigest, mapped.Symbol, mapped.Action, mapped.PositionSizeUSD, mapped.Confidence)
 
 	return &FullDecision{
 		UserPrompt: promptStr,

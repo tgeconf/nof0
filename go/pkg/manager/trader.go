@@ -4,6 +4,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/zeromicro/go-zero/core/logx"
+
 	"nof0-api/pkg/exchange"
 	executorpkg "nof0-api/pkg/executor"
 	"nof0-api/pkg/journal"
@@ -107,6 +109,7 @@ func (t *VirtualTrader) Start() error {
 	}
 	t.State = TraderStateRunning
 	t.UpdatedAt = time.Now()
+	logx.Infof("trader %s started", t.ID)
 	return nil
 }
 
@@ -119,13 +122,12 @@ func (t *VirtualTrader) Pause() error {
 	}
 	t.State = TraderStatePaused
 	t.UpdatedAt = time.Now()
+	logx.Infof("trader %s paused", t.ID)
 	return nil
 }
 
 // Resume sets the state back to running.
-func (t *VirtualTrader) Resume() error {
-	return t.Start()
-}
+func (t *VirtualTrader) Resume() error { return t.Start() }
 
 // Stop transitions the trader into stopped state.
 func (t *VirtualTrader) Stop() error {
@@ -133,6 +135,7 @@ func (t *VirtualTrader) Stop() error {
 	defer t.mu.Unlock()
 	t.State = TraderStateStopped
 	t.UpdatedAt = time.Now()
+	logx.Infof("trader %s stopped", t.ID)
 	return nil
 }
 

@@ -1,0 +1,16 @@
+**Logging Improvement To-Do**
+- Manager lifecycle:
+  - [ ] Log manager loop start and stop, including equity budget, allowed symbols, and exit reason (signal, context cancel, error).
+  - [ ] Emit periodic heartbeat or per-iteration timing metrics to monitor loop latency.
+- Trader lifecycle:
+  - [ ] Log trader registration with exchange/market provider IDs, allocation percentage, and prompt digest.
+  - [ ] Capture state transitions (`Start`, `Pause`, `Resume`, `Stop`), noting triggers (auto-start, Sharpe gating, manual command).
+  - [ ] Report allocation and equity snapshots when `SyncTraderPositions` updates margins or breaches occur.
+- Executor / AI workflow:
+  - [ ] Before each LLM call, log prompt digest, candidate count, and model name (without dumping full prompt).
+  - [ ] After the call, log latency, retry count, and whether structured parsing succeeded.
+  - [ ] Record validation outcomes, highlighting rejected decisions and rule violations.
+  - [ ] For each executed decision, log symbol, action, USD size, generated `cloid`, and exchange response or error.
+- Journal/observability integration:
+  - [ ] Surface journal write successes/failures per cycle, referencing trader ID and prompt digest.
+  - [ ] Consider emitting aggregated metrics (success ratio, decision counts) at info level for downstream collectors.
