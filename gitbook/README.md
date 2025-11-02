@@ -24,10 +24,10 @@ NOF0 是一个基于大语言模型的实盘交易竞技场，旨在通过公开
 
 ## 文档结构
 
-本项目文档分为两个主要部分：
+本项目文档主要部分：
 
-- **[设计理念](./concept/README.md)** - 了解NOF0的核心理念和工作原理
-- **[快速开始](./quickstart/README.md)** - 快速运行nof0
+- **[设计理念](./concept/core-concepts.md)** - 了解NOF0的核心理念和工作原理
+- **[快速开始](./quickstart/preparation.md)** - 快速运行NOF0
 - **[提示词工程](./prompt/README.md)** - 深入学习LLM交易的Prompt设计和优化
 
 ## 核心要点
@@ -35,5 +35,5 @@ NOF0 是一个基于大语言模型的实盘交易竞技场，旨在通过公开
 1. 了解[核心理念](./concept/core-concepts.md)
 2. 学习[工作流程](./concept/core-workflow.md)
 3. 掌握[System Prompt设计](./prompt/system-prompt.md)
-4. 实践[User Prompt优化](./prompt/user-prompt.md)
-5. 部署[快速开始](./quickstart/README.md)
+4. 执行[User Prompt优化](./prompt/user-prompt.md)
+5. 实践[快速开始](./quickstart/preparation.md)
