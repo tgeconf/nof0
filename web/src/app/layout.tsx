@@ -3,6 +3,7 @@ import Script from "next/script";
 import { Geist, Geist_Mono, IBM_Plex_Mono } from "next/font/google";
 import "./globals.css";
 import Header from "@/components/layout/Header";
+import HelpButton from "@/components/HelpButton";
 import SWRProvider from "@/components/providers/SWRProvider";
 import ThemeProvider from "@/components/theme/ThemeProvider";
 import PageActivityProvider from "@/components/providers/PageActivityProvider";
@@ -60,6 +61,7 @@ export default function RootLayout({
             <Header />
             {children}
           </div>
+          <HelpButton />
         </SWRProvider>
         <Analytics />
       </body>
