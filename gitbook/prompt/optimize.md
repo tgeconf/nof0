@@ -2,6 +2,10 @@
 
 基于社区观察和实验结果,不同模型需要不同的提示词调优策略。
 
+> 此处仅附上部分顶尖模型
+> 
+> 更多模型及其价格、上下文长度可参考 [ZenMux - Models](https://zenmux.ai/models?utm_source=nof0)
+
 ## GPT 系列 (GPT-4, GPT-4 Turbo)
 
 **特点:**
