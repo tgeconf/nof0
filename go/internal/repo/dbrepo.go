@@ -2,13 +2,13 @@ package repo
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"time"
 
 	"github.com/zeromicro/go-zero/core/logx"
-	"github.com/zeromicro/go-zero/core/stores/redis"
+	"github.com/zeromicro/go-zero/core/stores/cache"
 	"github.com/zeromicro/go-zero/core/stores/sqlx"
+
 	"nof0-api/internal/data"
 	"nof0-api/internal/types"
 )
@@ -20,42 +20,42 @@ type TTLs struct {
 	Long   int
 }
 
-// DBRepo loads data from Postgres and caches in Redis.
+// DBRepo loads data from Postgres and caches responses via the go-zero cache layer.
 // For resources not yet implemented in DB, it falls back to the file DataLoader.
 type DBRepo struct {
 	conn     sqlx.SqlConn
-	rds      *redis.Redis
+	cache    cache.Cache
 	fallback *data.DataLoader
 	ttls     TTLs
 }
 
-func NewDBRepo(conn sqlx.SqlConn, rds *redis.Redis, fallback *data.DataLoader, ttls TTLs) *DBRepo {
-	return &DBRepo{conn: conn, rds: rds, fallback: fallback, ttls: ttls}
+func NewDBRepo(conn sqlx.SqlConn, cache cache.Cache, fallback *data.DataLoader, ttls TTLs) *DBRepo {
+	return &DBRepo{conn: conn, cache: cache, fallback: fallback, ttls: ttls}
 }
 
 // helper: get from redis into v
 func (r *DBRepo) getCache(ctx context.Context, key string, v interface{}) (bool, error) {
-	if r.rds == nil {
+	if r.cache == nil {
 		return false, nil
 	}
-	s, err := r.rds.GetCtx(ctx, key)
-	if err != nil || len(s) == 0 {
+	if err := r.cache.GetCtx(ctx, key, v); err != nil {
+		if r.cache.IsNotFound(err) {
+			return false, nil
+		}
 		return false, err
 	}
-	return json.Unmarshal([]byte(s), v) == nil, nil
+	return true, nil
 }
 
 // helper: set redis from v
 func (r *DBRepo) setCache(ctx context.Context, key string, ttl int, v interface{}) {
-	if r.rds == nil || ttl <= 0 {
+	if r.cache == nil || ttl <= 0 {
 		return
 	}
-	bs, err := json.Marshal(v)
-	if err != nil {
-		logx.WithContext(ctx).Errorf("marshal cache %s: %v", key, err)
-		return
+	expire := time.Duration(ttl) * time.Second
+	if err := r.cache.SetWithExpireCtx(ctx, key, v, expire); err != nil {
+		logx.WithContext(ctx).Errorf("set cache %s: %v", key, err)
 	}
-	_ = r.rds.SetexCtx(ctx, key, string(bs), ttl)
 }
 
 // ================= Crypto Prices =================

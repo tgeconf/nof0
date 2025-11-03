@@ -1,10 +1,16 @@
 package svc
 
 import (
+	"database/sql"
 	"log"
+	"strings"
+	"time"
 
 	_ "github.com/jackc/pgx/v5/stdlib" // register pgx driver
+	"github.com/zeromicro/go-zero/core/stores/cache"
+	"github.com/zeromicro/go-zero/core/stores/sqlc"
 	"github.com/zeromicro/go-zero/core/stores/sqlx"
+	"github.com/zeromicro/go-zero/core/syncx"
 
 	"nof0-api/internal/config"
 	"nof0-api/internal/data"
@@ -41,6 +47,8 @@ type ServiceContext struct {
 
 	// Optional DB models (injected but unused by handlers/logic for now)
 	DBConn                      sqlx.SqlConn
+	CachedConn                  *sqlc.CachedConn
+	Cache                       cache.Cache
 	ModelsModel                 model.ModelsModel
 	SymbolsModel                model.SymbolsModel
 	PriceTicksModel             model.PriceTicksModel
@@ -58,6 +66,28 @@ func NewServiceContext(c config.Config, mainConfigPath string) *ServiceContext {
 	svc := &ServiceContext{
 		Config:     c,
 		DataLoader: data.NewDataLoader(c.DataPath),
+	}
+
+	cacheNodes := filterCacheNodes(c.Cache)
+	var cacheOpts []cache.Option
+	if c.TTL.Medium > 0 {
+		cacheOpts = append(cacheOpts, cache.WithExpiry(time.Duration(c.TTL.Medium)*time.Second))
+	}
+	if len(cacheNodes) > 0 {
+		svc.Cache = cache.New(cacheNodes, syncx.NewSingleFlight(), cache.NewStat("nof0-cache"), sql.ErrNoRows, cacheOpts...)
+	}
+	if strings.TrimSpace(c.Postgres.DataSource) != "" {
+		conn := sqlx.NewSqlConn("pgx", c.Postgres.DataSource)
+		raw, err := conn.RawDB()
+		if err != nil {
+			log.Fatalf("failed to init postgres raw db: %v", err)
+		}
+		applyPostgresPool(raw, c.Postgres)
+		svc.DBConn = conn
+		if svc.Cache != nil {
+			cached := sqlc.NewConnWithCache(conn, svc.Cache)
+			svc.CachedConn = &cached
+		}
 	}
 
 	baseDir := c.BaseDir()
@@ -205,9 +235,8 @@ func NewServiceContext(c config.Config, mainConfigPath string) *ServiceContext {
 	}
 
 	// Only inject DB models when DSN provided; business logic still uses DataLoader.
-	if c.Postgres.DSN != "" {
-		conn := sqlx.NewSqlConn("pgx", c.Postgres.DSN)
-		svc.DBConn = conn
+	if svc.DBConn != nil {
+		conn := svc.DBConn
 		svc.ModelsModel = model.NewModelsModel(conn)
 		svc.SymbolsModel = model.NewSymbolsModel(conn)
 		svc.PriceTicksModel = model.NewPriceTicksModel(conn)
@@ -221,4 +250,34 @@ func NewServiceContext(c config.Config, mainConfigPath string) *ServiceContext {
 		svc.ConversationMessagesModel = model.NewConversationMessagesModel(conn)
 	}
 	return svc
+}
+
+func applyPostgresPool(db *sql.DB, cfg config.PostgresConf) {
+	if cfg.MaxIdle > 0 {
+		db.SetMaxIdleConns(cfg.MaxIdle)
+	}
+	if cfg.MaxOpen > 0 {
+		db.SetMaxOpenConns(cfg.MaxOpen)
+	}
+	if cfg.MaxLifetime > 0 {
+		db.SetConnMaxLifetime(cfg.MaxLifetime)
+	} else {
+		db.SetConnMaxLifetime(5 * time.Minute)
+	}
+}
+
+func filterCacheNodes(conf cache.CacheConf) cache.CacheConf {
+	nodes := make(cache.CacheConf, 0, len(conf))
+	for _, node := range conf {
+		host := strings.TrimSpace(node.Host)
+		if host == "" {
+			continue
+		}
+		if strings.TrimSpace(node.Type) == "" {
+			node.Type = "node"
+		}
+		node.Host = host
+		nodes = append(nodes, node)
+	}
+	return nodes
 }

@@ -340,19 +340,46 @@ Cors:
 
 ```yaml
 Postgres:
-  DSN: postgres://nof0:nof0@localhost:5432/nof0?sslmode=disable
+  DataSource: postgres://nof0:nof0@localhost:5432/nof0?sslmode=disable
   MaxOpen: 10
   MaxIdle: 5
+  MaxLifetime: 5m
 
-Redis:
-  Host: localhost:6379
-  Type: node
+Cache:
+  - Host: localhost:6379
+    Type: node
 
 TTL:
   Short: 10    # 快速变化数据 (价格)
   Medium: 60   # 列表数据 (交易)
   Long: 300    # 聚合数据 (排行榜)
 ```
+# 环境变量覆盖：go-zero 映射字段名时使用 `Parent__Field`（双下划线）。例如 `Postgres.MaxOpen`
+# 需通过 `Postgres__MaxOpen=20` 设置，不能写成 `POSTGRES_MAX_OPEN`。缓存节点同理：`Cache__0__Host=redis:6379`
+
+**在 svcCtx 中使用数据库 / 缓存**  
+`internal/svc.ServiceContext` 现在直接暴露 go-zero 原生依赖：
+
+```go
+import (
+    "context"
+
+    engine "nof0-api/pkg/storage/engine"
+    "nof0-api/internal/svc"
+)
+
+func persistSomething(ctx context.Context, svcCtx *svc.ServiceContext) error {
+    repo, err := engine.NewRepository(svcCtx.DBConn, svcCtx.Cache)
+    if err != nil {
+        return err
+    }
+
+    // 直接使用 sqlx + cache.Cache
+    return repo.UpsertModel(ctx, "my-model", "My Model")
+}
+```
+
+无需额外初始化，全局资源在 `svc.NewServiceContext` 内按 goctl 模式创建。
 
 **初始化数据库**:
 ```bash

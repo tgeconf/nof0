@@ -14,17 +14,15 @@ import (
 	"github.com/zeromicro/go-zero/rest"
 )
 
-var configFile = flag.String("f", "etc/nof0.yaml", "the config file")
-
 func main() {
 	flag.Parse()
 
-	cfg := config.MustLoad(*configFile)
+	cfg := config.MustLoad()
 
 	server := rest.MustNewServer(cfg.RestConf)
 	defer server.Stop()
 
-	ctx := svc.NewServiceContext(*cfg, *configFile)
+	ctx := svc.NewServiceContext(*cfg, cfg.MainPath())
 	handler.RegisterHandlers(server, ctx)
 
 	fmt.Printf("Starting server at %s:%d...\n", cfg.Host, cfg.Port)

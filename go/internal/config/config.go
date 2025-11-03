@@ -2,12 +2,15 @@ package config
 
 import (
 	"errors"
+	"flag"
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/zeromicro/go-zero/core/conf"
-	"github.com/zeromicro/go-zero/core/stores/redis"
+	"github.com/zeromicro/go-zero/core/stores/cache"
 	"github.com/zeromicro/go-zero/rest"
 
 	"nof0-api/pkg/confkit"
@@ -18,17 +21,18 @@ import (
 	marketpkg "nof0-api/pkg/market"
 )
 
-type PostgresConf struct {
-	// DSN example: postgres://user:pass@localhost:5432/nof0?sslmode=disable
-	DSN     string `json:",optional"`
-	MaxOpen int    `json:",default=10"`
-	MaxIdle int    `json:",default=5"`
-}
-
 type CacheTTL struct {
 	Short  int `json:",default=10"` // seconds
 	Medium int `json:",default=60"`
 	Long   int `json:",default=300"`
+}
+
+// PostgresConf mirrors goctl style database settings while allowing pool tuning.
+type PostgresConf struct {
+	DataSource  string        `json:",optional"`
+	MaxOpen     int           `json:",default=10"`
+	MaxIdle     int           `json:",default=5"`
+	MaxLifetime time.Duration `json:",default=5m"`
 }
 
 type Config struct {
@@ -38,7 +42,7 @@ type Config struct {
 	Env      string          `json:",default=test"`
 	DataPath string          `json:",default=../../mcp/data"`
 	Postgres PostgresConf    `json:",optional"`
-	Redis    redis.RedisConf `json:",optional"`
+	Cache    cache.CacheConf `json:",optional"`
 	TTL      CacheTTL        `json:",optional"`
 
 	LLM      confkit.Section[llmpkg.Config]      `json:",optional"`
@@ -51,11 +55,109 @@ type Config struct {
 	baseDir  string
 }
 
+const defaultConfigRelativePath = "etc/nof0.yaml"
+
+var (
+	configFileFlag = flag.String("f", defaultConfigRelativePath, "the config file")
+)
+
+func init() {
+	confkit.LoadDotenvOnce()
+}
+
+func ConfigFile() string {
+	candidate := defaultConfigRelativePath
+	if configFileFlag != nil {
+		if trimmed := strings.TrimSpace(*configFileFlag); trimmed != "" {
+			candidate = trimmed
+		}
+	}
+
+	if resolved, ok := resolveConfigPath(candidate); ok {
+		return resolved
+	}
+	return candidate
+}
+
+func OverrideConfigFile(path string) (restore func()) {
+	prev := ConfigFile()
+	if configFileFlag != nil {
+		*configFileFlag = path
+	}
+	return func() {
+		if configFileFlag != nil {
+			*configFileFlag = prev
+		}
+	}
+}
+
 func (c *Config) IsTestEnv() bool {
 	return c.Env == "test" || c.Env == ""
 }
 
-func MustLoad(path string) *Config {
+func resolveConfigPath(path string) (string, bool) {
+	if path == "" {
+		return "", false
+	}
+	if filepath.IsAbs(path) {
+		if fileExists(path) {
+			return path, true
+		}
+		return "", false
+	}
+
+	startDirs := make([]string, 0, 3)
+	if cwd, err := os.Getwd(); err == nil {
+		startDirs = append(startDirs, cwd)
+	}
+	if exePath, err := os.Executable(); err == nil {
+		startDirs = append(startDirs, filepath.Dir(exePath))
+	}
+
+	seen := make(map[string]struct{}, len(startDirs))
+	for _, dir := range startDirs {
+		dir = filepath.Clean(dir)
+		if dir == "" {
+			continue
+		}
+		if _, ok := seen[dir]; ok {
+			continue
+		}
+		seen[dir] = struct{}{}
+		if resolved, ok := searchUpwards(dir, path); ok {
+			return resolved, true
+		}
+	}
+
+	return "", false
+}
+
+func searchUpwards(start, rel string) (string, bool) {
+	dir := filepath.Clean(start)
+	for {
+		candidate := filepath.Join(dir, rel)
+		if fileExists(candidate) {
+			return candidate, true
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			break
+		}
+		dir = parent
+	}
+	return "", false
+}
+
+func fileExists(path string) bool {
+	info, err := os.Stat(path)
+	if err != nil {
+		return false
+	}
+	return !info.IsDir()
+}
+
+func MustLoad() *Config {
+	path := ConfigFile()
 	cfg, err := Load(path)
 	if err != nil {
 		panic(err)

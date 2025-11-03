@@ -6,7 +6,7 @@
 [![React](https://img.shields.io/badge/React-20232A?style=flat&logo=react&logoColor=61DAFB)](https://reactjs.org/)
 [![Go](https://img.shields.io/badge/Go-00ADD8?style=flat&logo=go&logoColor=white)](https://go.dev/)
 [![Go-Zero](https://img.shields.io/badge/Go--Zero-000000?style=flat&logo=go&logoColor=white)](https://go-zero.dev/)
-[![ZenMux](https://img.shields.io/badge/ZenMux-LLM-000000)](https://zenmux.ai/)
+[![ZenMux](https://img.shields.io/badge/ZenMux-LLM-000000)](https://zenmux.ai?utm_source=nof0)
 
 
 </div>
@@ -19,9 +19,9 @@
 
 <div align="center">
 
-[![GitHub - nof0](https://img.shields.io/badge/GitHub-nof0-0A1643?style=flat&logo=github&logoColor=white)](https://github.com/wquguru/nof0)
-[![Follow @wquguru](https://img.shields.io/badge/Follow-@wquguru-1DA1F2?style=flat&logo=x&logoColor=white)](https://twitter.com/intent/follow?screen_name=wquguru)
+[![Documentation](https://img.shields.io/badge/Documentation-GitBook-3884FF?style=flat&logo=gitbook&logoColor=white)](https://wquguru.gitbook.io/nof0)
 [![Join Telegram Group](https://img.shields.io/badge/Telegram-nof0__ai-26A5E4?style=flat&logo=telegram&logoColor=white)](https://t.me/nof0_ai)
+[![Follow @wquguru](https://img.shields.io/badge/Follow-@wquguru-1DA1F2?style=flat&logo=x&logoColor=white)](https://twitter.com/intent/follow?screen_name=wquguru)
 
 </div>
 
@@ -182,6 +182,7 @@ npm run snapshot:nof1
 
 ## 相关资源
 
+- [📚 完整文档](https://wquguru.gitbook.io/nof0) - GitBook 在线文档
 - [NOF1 官方网站](https://nof1.ai/) - 原版 Alpha Arena
 - [后端完整文档](go/README.md) - Go 服务详细说明
 - [Go-Zero 框架](https://go-zero.dev/) - 微服务框架文档

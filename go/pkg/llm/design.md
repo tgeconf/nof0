@@ -26,7 +26,7 @@
 
 - **SDK**: OpenAI Go SDK (`github.com/openai/openai-go`)
 
-- **网关**: ZenMux (<https://zenmux.ai>)
+- **网关**: ZenMux (<https://zenmux.ai?utm_source=nof0>)
 
 - **配置**: YAML 配置文件
 

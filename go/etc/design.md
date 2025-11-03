@@ -18,7 +18,7 @@
 - `etc/secrets.example`：列出需要通过环境变量注入的敏感键名，避免直接写入 YAML。
 
 ### 配置加载流程
-1. 入口 `main` 通过 `config.MustLoad(*configFile)` 解析 `etc/nof0.yaml`，并启用 `conf.UseEnv()` 支持环境变量覆盖。
+1. 入口 `main` 通过 `config.MustLoad()` 解析 `etc/nof0.yaml`，并启用 `conf.UseEnv()` 支持环境变量覆盖。
 2. `config.MustLoad` 除返回 `Config` 外，还要负责：
    - 根据主配置中的路径字段加载模块级配置（如 `cfg.LLM.File`, `cfg.Manager.File`, `cfg.Executor.File`）。
    - 调用各模块的 `LoadConfig + Validate`，保证返回值已经过结构化校验。
@@ -34,7 +34,7 @@
 
 ## 模块级配置要求
 ### 服务入口（internal/config）
-- 新增 `func MustLoad(path string) *Config`，内部调用 `conf.MustLoad` 并处理模块级文件加载、验证与错误包装。
+- 新增 `func MustLoad() *Config`，内部调用 `Load(ConfigFile())` 并处理模块级文件加载、验证与错误包装。
 - `Config` 结构需要扩展出新的嵌套字段：
   ```go
   type Config struct {
