@@ -2,13 +2,13 @@ package llm
 
 // ChatRequest describes a single LLM chat invocation.
 type ChatRequest struct {
-	Model          string          `json:"model,omitempty"`
-	Messages       []Message       `json:"messages"`
-	Temperature    *float64        `json:"temperature,omitempty"`
-	MaxTokens      *int            `json:"max_tokens,omitempty"`
-	TopP           *float64        `json:"top_p,omitempty"`
-	Stream         bool            `json:"stream,omitempty"`
-	ResponseFormat *ResponseFormat `json:"response_format,omitempty"`
+	Model               string          `json:"model,omitempty"`
+	Messages            []Message       `json:"messages"`
+	Temperature         *float64        `json:"temperature,omitempty"`
+	MaxCompletionTokens *int            `json:"max_completion_tokens,omitempty"`
+	TopP                *float64        `json:"top_p,omitempty"`
+	Stream              bool            `json:"stream,omitempty"`
+	ResponseFormat      *ResponseFormat `json:"response_format,omitempty"`
 	// Optional: Zenmux multi-model routing config; used when Model == "zenmux/auto"
 	Routing *RoutingConfig `json:"model_routing_config,omitempty"`
 }

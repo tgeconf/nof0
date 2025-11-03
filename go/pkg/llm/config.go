@@ -44,11 +44,11 @@ type Config struct {
 
 // ModelConfig defines defaults for a particular model alias.
 type ModelConfig struct {
-	Provider    string   `yaml:"provider"`
-	ModelName   string   `yaml:"model_name"`
-	Temperature *float64 `yaml:"temperature,omitempty"`
-	MaxTokens   *int     `yaml:"max_tokens,omitempty"`
-	TopP        *float64 `yaml:"top_p,omitempty"`
+	Provider            string   `yaml:"provider"`
+	ModelName           string   `yaml:"model_name"`
+	Temperature         *float64 `yaml:"temperature,omitempty"`
+	MaxCompletionTokens *int     `yaml:"max_completion_tokens,omitempty"`
+	TopP                *float64 `yaml:"top_p,omitempty"`
 }
 
 // LoadConfig reads configuration from disk.
