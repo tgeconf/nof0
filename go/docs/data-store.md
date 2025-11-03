@@ -74,6 +74,7 @@ created_at TIMESTAMPTZ DEFAULT NOW()
 #### `price_ticks`
 ```sql
 id BIGSERIAL PRIMARY KEY,
+provider TEXT NOT NULL,
 symbol TEXT NOT NULL,
 price DOUBLE PRECISION NOT NULL,
 ts_ms BIGINT NOT NULL,
@@ -81,16 +82,18 @@ source TEXT DEFAULT 'hyperliquid',
 ingested_at TIMESTAMPTZ DEFAULT NOW()
 ```
 - Retention: keep 30 days in primary table; archive older rows to cold storage.
-- Index: `CREATE INDEX idx_price_ticks_symbol_ts ON price_ticks(symbol, ts_ms DESC);`
+- Index: `CREATE INDEX idx_price_ticks_symbol_ts ON price_ticks(provider, symbol, ts_ms DESC);`
 
 #### `price_latest`
 ```sql
-symbol TEXT PRIMARY KEY,
+provider TEXT NOT NULL,
+symbol TEXT NOT NULL,
 price DOUBLE PRECISION NOT NULL,
 ts_ms BIGINT NOT NULL,
 updated_at TIMESTAMPTZ DEFAULT NOW()
 ```
-- Maintained by `INSERT ... ON CONFLICT (symbol) DO UPDATE`.
+- Primary key `(provider, symbol)` keeps venue snapshots distinct.
+- Maintained by `INSERT ... ON CONFLICT (provider, symbol) DO UPDATE`.
 
 #### `accounts`
 ```sql
@@ -104,6 +107,7 @@ updated_at TIMESTAMPTZ DEFAULT NOW()
 ```sql
 id BIGSERIAL PRIMARY KEY,
 model_id TEXT NOT NULL,
+exchange_provider TEXT,
 ts_ms BIGINT NOT NULL,
 equity_usd DOUBLE PRECISION NOT NULL,
 realized_pnl DOUBLE PRECISION DEFAULT 0,
@@ -111,7 +115,7 @@ unrealized_pnl DOUBLE PRECISION DEFAULT 0,
 run_id UUID DEFAULT gen_random_uuid(),
 created_at TIMESTAMPTZ DEFAULT NOW()
 ```
-- Index: `CREATE INDEX idx_equity_model_ts ON account_equity_snapshots(model_id, ts_ms DESC);`
+- Index: `CREATE INDEX idx_equity_model_ts ON account_equity_snapshots(model_id, exchange_provider, ts_ms DESC);`
 - Optional uniqueness: `(model_id, ts_ms)` to prevent duplicates from replay.
 
 #### `positions`
@@ -119,6 +123,7 @@ created_at TIMESTAMPTZ DEFAULT NOW()
 id TEXT PRIMARY KEY,
 model_id TEXT NOT NULL,
 symbol TEXT NOT NULL,
+exchange_provider TEXT NOT NULL,
 side TEXT NOT NULL CHECK (side IN ('long','short')),
 entry_price DOUBLE PRECISION NOT NULL,
 quantity DOUBLE PRECISION NOT NULL,
@@ -132,7 +137,7 @@ exit_price DOUBLE PRECISION,
 metadata JSONB DEFAULT '{}'::jsonb,
 updated_at TIMESTAMPTZ DEFAULT NOW()
 ```
-- Use partial index on `status='open'` to accelerate active position lookups.
+- Use partial index on `(model_id, exchange_provider)` with `status='open'` to accelerate active position lookups.
 - Mark-to-market values (current price, unrealized PnL, liquidation) should be computed during cache publish instead of persisted.
 
 #### `trader_state` *(proposed)*
@@ -154,6 +159,7 @@ pause_until TIMESTAMPTZ
 id TEXT PRIMARY KEY,
 model_id TEXT NOT NULL,
 symbol TEXT NOT NULL,
+exchange_provider TEXT NOT NULL,
 side TEXT NOT NULL,
 trade_type TEXT,
 quantity DOUBLE PRECISION,
@@ -170,8 +176,9 @@ entry_oid BIGINT,
 exit_oid BIGINT,
 created_at TIMESTAMPTZ DEFAULT NOW()
 ```
-- Index: `CREATE INDEX idx_trades_model_entry_ts ON trades(model_id, entry_ts_ms DESC);`
+- Index: `CREATE INDEX idx_trades_model_entry_ts ON trades(model_id, exchange_provider, entry_ts_ms DESC);`
 - For fast lookups by `exit_oid`, add `CREATE INDEX idx_trades_exit_oid ON trades(exit_oid);`
+- Include `exchange_provider` in composite indexes if analytics need venue-level slicing.
 
 #### `model_analytics`
 ```sql
@@ -255,7 +262,7 @@ Existing views (see `migrations/002_refresh_helpers.sql`):
 
 | View | Source | Purpose | Refresh Cadence |
 |------|--------|---------|-----------------|
-| `v_crypto_prices_latest` | `price_latest` | Aligns with `/api/crypto-prices`. | On every price upsert or via scheduled job (`refresh_views_nof0()`). |
+| `v_crypto_prices_latest` | `price_latest` | Aligns with `/api/crypto-prices`; expose `provider` when multiple venues are active to prevent collisions. | On every price upsert or via scheduled job (`refresh_views_nof0()`). |
 | `v_leaderboard` | `account_equity_snapshots` + `models` | Supplies leaderboard snapshot. | After bulk analytics refresh (hourly). |
 | `v_since_inception` | `account_equity_snapshots` | Feeds `/api/since-inception-values`. | Hourly or after nightly ingest. |
 
@@ -265,10 +272,10 @@ Add supporting indexes on view columns used in API filters (e.g., `model_id`).
 
 - **Prices**  
   1. Receive tick from exchange/ws feed.  
-  2. `INSERT INTO price_ticks`.  
-  3. `UPSERT price_latest`.  
+  2. `INSERT INTO price_ticks` (include `provider`).  
+  3. `UPSERT price_latest` keyed by `(provider, symbol)`.  
   4. Refresh `market_asset_ctx` (funding / open interest / mark price) when payload contains those fields.  
-  5. Publish to Redis keys (`nof0:price:latest:{symbol}`); aggregate keys are optional.  
+  5. Publish to Redis keys (`nof0:price:{provider}:{symbol}:latest`; legacy `nof0:price:latest:{symbol}` optional for single-provider deployments).  
   6. Optionally `REFRESH MATERIALIZED VIEW CONCURRENTLY v_crypto_prices_latest`.
 
 - **Market Metadata**  
@@ -278,16 +285,16 @@ Add supporting indexes on view columns used in API filters (e.g., `model_id`).
 
 - **Trades**  
   1. Consume fill event.  
-  2. Upsert `trades`.  
-  3. Mark old positions `status='closed'`, open new ones if partial.  
-  4. Update/insert `account_equity_snapshots` once positions reflect the latest state.  
+  2. Upsert `trades` (including `exchange_provider`).  
+  3. Mark old positions `status='closed'`, open new ones if partial (ensure `exchange_provider` is set).  
+  4. Update/insert `account_equity_snapshots` once positions reflect the latest state, carrying `exchange_provider` for audit.  
   5. Recompute leaderboard metrics (prefer publishing to Redis; persist the aggregated result only when historical analytics must be retained).
 
 - **Positions**  
   1. On position open/adjust close: upsert `positions`.  
   2. On full close: set `status='closed'`.  
   3. Compute mark-to-market metrics (current price, unrealized PnL, liquidation) in memory during cache publish rather than persisting them.  
-  4. Push derived JSON to `nof0:positions:{model_id}` hash.
+  4. Push derived JSON to `nof0:positions:{model_id}` hash (include `exchange_provider` field in payload).
 
 - **Analytics**  
   1. Batch job hydrates metrics from trades + positions.  
@@ -331,9 +338,10 @@ Add supporting indexes on view columns used in API filters (e.g., `model_id`).
 
 | Key Pattern | Type | Value Schema | TTL | Source of Truth | Invalidation / Refresh |
 |-------------|------|--------------|-----|-----------------|------------------------|
-| `nof0:price:latest:{symbol}` | String JSON | `{"symbol":"BTC","price":111317.5,"timestamp":1761452335744}` | 10s | Postgres `price_latest` / live feed | Overwrite on every tick; falls back to DB when expired. |
-| `nof0:crypto_prices` | String JSON | Map of symbol → `CryptoPrice`. | 10s | Aggregated from `price_latest`. | Rebuilt in same loop as per-symbol writes. |
-| `nof0:positions:{model_id}` | Hash | Field = `symbol`, Value = position JSON (mirrors `internal/types.Position`). | 30s | Postgres `positions` (active rows). | Replace hash after sync; also cleared on position close. |
+| `nof0:price:{provider}:{symbol}:latest` | String JSON | `{"provider":"hyperliquid_testnet","symbol":"BTC","price":111317.5,"timestamp":1761452335744}` | 10s | Postgres `price_latest` / live feed | Overwrite on every tick; falls back to DB when expired. |
+| `nof0:price:latest:{symbol}` | String JSON *(legacy)* | `{"symbol":"BTC","price":111317.5,"timestamp":1761452335744}` | 10s | Same as above. | Optional compatibility for single-provider setups. |
+| `nof0:crypto_prices` | String JSON | Map of symbol → `CryptoPrice`. | 10s | Aggregated from `price_latest`. | Rebuilt in same loop as per-symbol writes; include provider metadata if multiple venues feed the cache. |
+| `nof0:positions:{model_id}` | Hash | Field = `symbol`, Value = position JSON (mirrors `internal/types.Position`). | 30s | Postgres `positions` (active rows). | Replace hash after sync; include `exchange_provider` and venue-derived metrics. |
 | `nof0:lock:positions:{model_id}` | String | `"1"` | 5s | Coordination only. | `SET NX PX 5000` before recompute. |
 | `nof0:trades:recent:{model_id}` | List *(optional)* | JSON-encoded trade snapshots. | 60s | Postgres `trades` (latest N). | Maintain only if SQL query latency is insufficient; otherwise query DB directly. |
 | `nof0:trades:stream` | Stream | Entry fields per trade (id, symbol, pnl). | 0 (no expiry) | Derived from ingest event. | Append-on-write for downstream consumers. |
