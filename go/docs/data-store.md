@@ -2,9 +2,26 @@
 
 This document captures the authoritative storage design for the NOF0 trading platform. It combines the domain definitions surfaced in `internal/types`, runtime behaviour described in `docs/engine.md`, and the baseline schema proposed in `docs/data-architecture.md`. It is intended to guide the production build-out as we migrate from JSON loaders to persistent infrastructure.
 
+### Design Principles
+
+1. **Trader-Centric Source of Truth** – Every persistent entity should be relatable to a trader declared in `etc/manager.yaml`. Trader IDs from that config map onto rows in the `models` table (or equivalent view), and trader-scoped runtime state (risk guards, cooldowns, allocations) is persisted separately (see the proposed `trader_state` table) so orchestration can resume safely after restarts.
+2. **Derived Data Lives in Caches** – Values that can be recomputed (mark prices, unrealised PnL, aggregated analytics) stay out of long-lived tables. We compute them on demand or cache them in Redis with short TTLs to avoid staleness and write amplification.
+3. **API Parity & Auditability** – Postgres stores the immutable facts (prices, fills, configuration snapshots) required to reconstruct any API response. Redis accelerates reads but must always be rebuildable from Postgres and upstream providers.
+4. **Provider-Agnostic, Provider-Aware** – Exchange and market integrations share common tables, but venue-specific metadata (e.g., Hyperliquid leverage tables, simulator balances for `pkg/exchange/sim`) is captured explicitly so guardrails and analytics remain accurate.
+5. **Spectator-Friendly Migration Path** – Schema and cache changes favour additive evolution (new tables/keys) to keep rollout risk low while JSON loaders still serve production traffic.
+
+### Entity Relationships (High Level)
+
+- **Trader ↔ Model**: Trader IDs from `manager.yaml` should become rows in `models`; when persisted, `trader_state` (proposed) carries the runtime toggles for each trader. All downstream entities reference the trader via `model_id`/`trader_id`.
+- **Trader ↔ Exchange**: Each trader’s `exchange_provider` (defined in `manager.yaml`, surfaced via `trader_state`) selects a concrete `exchange.Provider`. Open positions and trades are stored per trader/model in Postgres and cached in Redis.
+- **Trader ↔ Market**: The configured `market_provider` determines which entries in `market_assets` / `market_asset_ctx` and Redis market keys a trader consumes; these values power risk guards (e.g., liquidity thresholds).
+- **Trader ↔ Executor / LLM**: Decisions and analytics are captured through `decision_cycles` (proposed), `model_analytics`, and corresponding Redis keys. These link back to the trader via `model_id` and provide the prompt/LLM audit trail.
+- **Trader ↔ Conversations/Journals**: Conversation threads (`conversations`, `conversation_messages`) and journal cycles reference the owning trader to keep audit trails aligned with orchestration and customer prompts.
+
 ## 1. Scope and Inputs
 
 - **Configuration chain** (`etc/nof0.yaml`): maps each subsystem to its YAML file. TTL classes (`Short=10s`, `Medium=60s`, `Long=300s`) inform Redis expirations.
+- **Trader configuration** (`etc/manager.yaml`): defines top-level trader IDs, exchange/market providers, risk guards, and prompts; these drive `models`, `trader_state`, and trader-scoped caches.
 - **Runtime domains** (`internal/types`, `docs/engine.md`): positions, trades, analytics, conversations, market snapshots.
 - **Existing migrations** (`migrations/001_domain.sql`, `002_refresh_helpers.sql`): seed Postgres tables and materialized views.
 
@@ -18,7 +35,7 @@ Postgres is the source of truth for historical and transactional data. Redis act
 
 | Category | Table | Purpose | Primary Key | Relationship Notes |
 |----------|-------|---------|-------------|---------------------|
-| Reference | `models` | Catalog of arena participants. | `id` | Other tables carry `model_id` columns pointing at this logical key (checked in application). |
+| Reference | `models` | Catalog of arena participants (logical Trader IDs from `manager.yaml`). | `id` | `id` should align with trader IDs; application enforces mapping to config. |
 | Reference | `symbols` | Tradeable instruments (e.g., `BTC`). | `symbol` | `symbol` columns elsewhere mirror this value set; integrity validated in ingest. |
 | Fact | `price_ticks` | Append-only price feed. | `id` (bigserial) | Rows include a `symbol` that must exist in `symbols`; no FK enforced. Indexed `(symbol, ts_ms DESC)`. |
 | Fact | `price_latest` | Upserted latest price per symbol. | `symbol` | Maintained by ingest upsert, mirrors `symbols`. |
@@ -26,10 +43,13 @@ Postgres is the source of truth for historical and transactional data. Redis act
 | Fact | `account_equity_snapshots` | Time-series equity & PnL. | `id` (bigserial) | Contains `model_id`; consumer code uses it to join. |
 | Fact | `positions` | Open positions. | `id` (text) | Stores `model_id` / `symbol` references without DB constraints. |
 | Fact | `trades` | Closed trade executions. | `id` (text) | Same logical relationship as positions. |
+| Config Mirror | `trader_state` *(proposed)* | Persist derived trader state (risk guard toggles, cooldowns, allocation). | `trader_id` | Derived from `manager.yaml`; see §2.6. |
 | Aggregate | `model_analytics` | Denormalised analytics payloads. | `model_id` | One row per model; payload mirrors API schema. |
 | Conversations | `conversations` | Conversation threads per model. | `id` (bigserial) | `model_id` column maps back to `models`. |
 | Conversations | `conversation_messages` | Individual chat messages. | `id` (bigserial) | Stores `conversation_id`; writer ensures referential integrity. |
 | Journaling | `decision_cycles` *(proposed)* | Persisted executor cycles. | `id` (bigserial) | Includes `model_id` for joinability; integrity handled by ingestion job. |
+| Market Meta | `market_assets` *(proposed)* | Latest asset metadata per venue. | `(provider, symbol)` | Mirrors Hyperliquid `universe` data. |
+| Market Meta | `market_asset_ctx` *(proposed)* | Funding, OI, impact prices per symbol. | `(provider, symbol)` | Mirrors Hyperliquid `assetCtxs`. |
 
 > **Note**: `decision_cycles` is not yet in the migrations; add it when journal persistence moves from filesystem to DB.
 
@@ -39,8 +59,10 @@ Postgres is the source of truth for historical and transactional data. Redis act
 ```sql
 id TEXT PRIMARY KEY,
 display_name TEXT NOT NULL,
+trader_config JSONB DEFAULT '{}'::jsonb,
 created_at TIMESTAMPTZ DEFAULT NOW()
 ```
+- `trader_config` can mirror static settings from `manager.yaml` (risk params, prompt paths) for auditing.
 
 #### `symbols`
 ```sql
@@ -113,6 +135,20 @@ updated_at TIMESTAMPTZ DEFAULT NOW()
 - Use partial index on `status='open'` to accelerate active position lookups.
 - Mark-to-market values (current price, unrealized PnL, liquidation) should be computed during cache publish instead of persisted.
 
+#### `trader_state` *(proposed)*
+```sql
+trader_id TEXT PRIMARY KEY,
+exchange_provider TEXT NOT NULL,
+market_provider TEXT NOT NULL,
+allocation_pct DOUBLE PRECISION,
+cooldown JSONB DEFAULT '{}'::jsonb,
+risk_guards JSONB DEFAULT '{}'::jsonb,
+last_decision_at TIMESTAMPTZ,
+pause_until TIMESTAMPTZ
+```
+- Captures dynamic state (cooldowns, pause windows, guard toggles) so restarts honour trader-level controls.
+- `trader_id` should match `models.id` for schedule alignment.
+
 #### `trades`
 ```sql
 id TEXT PRIMARY KEY,
@@ -179,6 +215,40 @@ executed_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 ```
 - Index on `(model_id, executed_at DESC)` for audit queries. Rebuild account/position snapshots from canonical tables when auditing instead of persisting them here.
 
+#### `market_assets` *(proposed)*
+```sql
+provider TEXT NOT NULL,
+symbol TEXT NOT NULL,
+name TEXT,
+sz_decimals INT,
+max_leverage DOUBLE PRECISION,
+only_isolated BOOLEAN,
+margin_table_id INT,
+is_delisted BOOLEAN,
+updated_at TIMESTAMPTZ DEFAULT NOW(),
+PRIMARY KEY (provider, symbol)
+```
+- Mirrors Hyperliquid `UniverseEntry`; used to feed risk guard logic and executor prompts.
+
+#### `market_asset_ctx` *(proposed)*
+```sql
+provider TEXT NOT NULL,
+symbol TEXT NOT NULL,
+funding DOUBLE PRECISION,
+open_interest DOUBLE PRECISION,
+oracle_px DOUBLE PRECISION,
+mark_px DOUBLE PRECISION,
+mid_px DOUBLE PRECISION,
+impact_pxs JSONB,
+prev_day_px DOUBLE PRECISION,
+day_ntl_vlm DOUBLE PRECISION,
+day_base_vlm DOUBLE PRECISION,
+updated_at TIMESTAMPTZ DEFAULT NOW(),
+PRIMARY KEY (provider, symbol)
+```
+- Derived from Hyperliquid `assetCtxs`; refreshed alongside price ingestion.
+- Funding and open interest support the liquidity guard described in `manager.yaml`.
+
 ### 2.3 Materialized Views & Refresh
 
 Existing views (see `migrations/002_refresh_helpers.sql`):
@@ -197,8 +267,14 @@ Add supporting indexes on view columns used in API filters (e.g., `model_id`).
   1. Receive tick from exchange/ws feed.  
   2. `INSERT INTO price_ticks`.  
   3. `UPSERT price_latest`.  
-  4. Publish to Redis keys (`nof0:price:latest:{symbol}`, `nof0:crypto_prices`).  
-  5. Optionally `REFRESH MATERIALIZED VIEW CONCURRENTLY v_crypto_prices_latest`.
+  4. Refresh `market_asset_ctx` (funding / open interest / mark price) when payload contains those fields.  
+  5. Publish to Redis keys (`nof0:price:latest:{symbol}`); aggregate keys are optional.  
+  6. Optionally `REFRESH MATERIALIZED VIEW CONCURRENTLY v_crypto_prices_latest`.
+
+- **Market Metadata**  
+  1. On Hyperliquid `metaAndAssetCtxs` response: upsert `market_assets` and `market_asset_ctx`.  
+  2. Publish per-symbol metadata to Redis (`nof0:market:asset:{provider}:{symbol}`, `nof0:market:ctx:{provider}:{symbol}`).  
+  3. Recompute any trader risk thresholds dependent on max leverage or liquidity.
 
 - **Trades**  
   1. Consume fill event.  
@@ -222,6 +298,14 @@ Add supporting indexes on view columns used in API filters (e.g., `model_id`).
   1. On new conversation message: insert into `conversation_messages`.  
   2. Update `nof0:conversations:{model_id}` list.  
   3. Decision loops write to `decision_cycles` (once table exists).
+
+- **Trader State**  
+  1. When manager updates allocation, risk guard toggles, or cooldowns, write to `trader_state`.  
+  2. Mirror lightweight snapshots to Redis (`nof0:trader:{id}:state`) to support fast scheduler lookups.
+
+- **Simulator (paper trading)**  
+  1. `pkg/exchange/sim` maintains in-memory orders/balances; when persistence is desired, append orders to `nof0:sim:orders:{trader_id}` and store balances in `nof0:sim:balances:{trader_id}`.  
+  2. Periodically snapshot simulator state to Postgres tables (reuse `positions`/`trades` or introduce `sim_orders`, `sim_balances`) if audit trail is required.
 
 ### 2.5 Maintenance & Retention
 
@@ -261,6 +345,11 @@ Add supporting indexes on view columns used in API filters (e.g., `model_id`).
 | `nof0:analytics:all` | String JSON *(optional)* | `AnalyticsResponse`. | 10m | Aggregated from per-model analytics. | Rebuild on demand when bulk response is needed. |
 | `nof0:conversations:{model_id}` | List | Message JSON objects (role, content, ts). | 5m | `conversation_messages`. | Append on new message; trim to recency window. |
 | `nof0:decision:last:{model_id}` | String JSON *(optional)* | Latest executor decision summary. | 60s | Runtime snapshots only; skip if `decision_cycles` persists audits. |
+| `nof0:trader:{id}:state` | Hash | Fields for cooldown timestamps, pause flags, guard toggles. | 60s | Mirrors `trader_state` table / in-memory scheduler. | Updated whenever manager mutates trader state. |
+| `nof0:market:asset:{provider}:{symbol}` | String JSON | Asset metadata (max leverage, isolation flag). | 300s | `market_assets`. | Updated during market meta refresh. |
+| `nof0:market:ctx:{provider}:{symbol}` | String JSON | Funding rate, open interest, mark/oracle price. | 60s | `market_asset_ctx`. | Refreshed alongside price updates. |
+| `nof0:sim:orders:{trader_id}` | List *(optional)* | Simulator order snapshots. | 60s | Maintained by paper trading provider. | Write-through from `pkg/exchange/sim` if persistence required. |
+| `nof0:sim:balances:{trader_id}` | Hash *(optional)* | Asset balances for simulator. | 60s | Maintained by simulator provider. | Updated after fills in sim mode.
 
 ### 3.3 Patterns & Guardrails
 
@@ -348,4 +437,4 @@ SELECT refresh_views_nof0();
 
 ---
 
-This design should evolve with product requirements. When new features introduce additional data (e.g., risk audits, backtests), extend the tables and key patterns here and update the corresponding ingestion and cache flows.***
+This design should evolve with product requirements. When new trader configurations, market sources, or backtests introduce additional data, extend the tables and key patterns above and update the corresponding ingestion and cache flows.
