@@ -1,6 +1,9 @@
 package model
 
-import "github.com/zeromicro/go-zero/core/stores/sqlx"
+import (
+	"github.com/zeromicro/go-zero/core/stores/cache"
+	"github.com/zeromicro/go-zero/core/stores/sqlx"
+)
 
 var _ ConversationMessagesModel = (*customConversationMessagesModel)(nil)
 
@@ -9,7 +12,6 @@ type (
 	// and implement the added methods in customConversationMessagesModel.
 	ConversationMessagesModel interface {
 		conversationMessagesModel
-		withSession(session sqlx.Session) ConversationMessagesModel
 	}
 
 	customConversationMessagesModel struct {
@@ -18,12 +20,8 @@ type (
 )
 
 // NewConversationMessagesModel returns a model for the database table.
-func NewConversationMessagesModel(conn sqlx.SqlConn) ConversationMessagesModel {
+func NewConversationMessagesModel(conn sqlx.SqlConn, c cache.CacheConf, opts ...cache.Option) ConversationMessagesModel {
 	return &customConversationMessagesModel{
-		defaultConversationMessagesModel: newConversationMessagesModel(conn),
+		defaultConversationMessagesModel: newConversationMessagesModel(conn, c, opts...),
 	}
-}
-
-func (m *customConversationMessagesModel) withSession(session sqlx.Session) ConversationMessagesModel {
-	return NewConversationMessagesModel(sqlx.NewSqlConnFromSession(session))
 }

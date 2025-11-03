@@ -1,6 +1,9 @@
 package model
 
-import "github.com/zeromicro/go-zero/core/stores/sqlx"
+import (
+	"github.com/zeromicro/go-zero/core/stores/cache"
+	"github.com/zeromicro/go-zero/core/stores/sqlx"
+)
 
 var _ SymbolsModel = (*customSymbolsModel)(nil)
 
@@ -9,7 +12,6 @@ type (
 	// and implement the added methods in customSymbolsModel.
 	SymbolsModel interface {
 		symbolsModel
-		withSession(session sqlx.Session) SymbolsModel
 	}
 
 	customSymbolsModel struct {
@@ -18,12 +20,8 @@ type (
 )
 
 // NewSymbolsModel returns a model for the database table.
-func NewSymbolsModel(conn sqlx.SqlConn) SymbolsModel {
+func NewSymbolsModel(conn sqlx.SqlConn, c cache.CacheConf, opts ...cache.Option) SymbolsModel {
 	return &customSymbolsModel{
-		defaultSymbolsModel: newSymbolsModel(conn),
+		defaultSymbolsModel: newSymbolsModel(conn, c, opts...),
 	}
-}
-
-func (m *customSymbolsModel) withSession(session sqlx.Session) SymbolsModel {
-	return NewSymbolsModel(sqlx.NewSqlConnFromSession(session))
 }

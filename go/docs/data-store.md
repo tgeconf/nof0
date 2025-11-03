@@ -27,6 +27,21 @@ This document captures the authoritative storage design for the NOF0 trading pla
 
 Postgres is the source of truth for historical and transactional data. Redis acts as a low-latency read layer and coordination space (locks, idempotency guards). Every Redis value must be reproducible from Postgres or upstream APIs.
 
+### goctl model regeneration
+
+Regenerate the go-zero data models after applying migrations so repositories stay in sync:
+
+```bash
+POSTGRES_DSN="postgres://<user>:<password>@<host>:<port>/<db>?sslmode=disable"
+goctl model pg datasource \
+  --url "$POSTGRES_DSN" \
+  --dir internal/model \
+  --cache \
+  --table "*"
+```
+
+The command assumes `goctl` is available on `PATH` (install via `go install github.com/zeromicro/go-zero/tools/goctl@v1.9.2`). Adjust the DSN and output directory as needed for CI environments.
+
 ---
 
 ## 2. Postgres Schema
