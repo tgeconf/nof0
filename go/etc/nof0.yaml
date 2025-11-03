@@ -20,7 +20,7 @@ Cache:
   - Host: "${Cache__0__Host}"
     Type: node
     Pass: "${Cache__0__Pass}"
-    Tls: true
+    Tls: ${Cache__0__Tls}
     Weight: 100
 
 TTL:
