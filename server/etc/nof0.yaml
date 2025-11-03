@@ -1,0 +1,28 @@
+Name: nof0
+Host: 0.0.0.0
+Port: 8888
+DataPath: ../mcp/data
+
+Postgres:
+  DSN: ""
+  MaxOpen: 10
+  MaxIdle: 5
+
+Redis:
+  Host: ""
+  Type: node
+  Pass: ""
+  Tls: false
+
+TTL:
+  Short: 10
+  Medium: 60
+  Long: 300
+
+Cors:
+  AllowOrigins: ['*']
+  AllowMethods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS']
+  AllowHeaders: ['Content-Type', 'Authorization']
+  ExposeHeaders: ['Content-Length']
+  AllowCredentials: false
+  MaxAge: 3600
