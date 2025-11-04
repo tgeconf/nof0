@@ -2,7 +2,7 @@
 
 User Prompt 在每次调用时动态生成,包含实时市场数据和账户状态。
 
-## 完整 User Prompt 重构
+## 完整 User Prompt
 
 ````markdown
 It has been {minutes_elapsed} minutes since you started trading.

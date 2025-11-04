@@ -1,6 +1,9 @@
 package model
 
-import "github.com/zeromicro/go-zero/core/stores/sqlx"
+import (
+	"github.com/zeromicro/go-zero/core/stores/cache"
+	"github.com/zeromicro/go-zero/core/stores/sqlx"
+)
 
 var _ TradesModel = (*customTradesModel)(nil)
 
@@ -9,7 +12,6 @@ type (
 	// and implement the added methods in customTradesModel.
 	TradesModel interface {
 		tradesModel
-		withSession(session sqlx.Session) TradesModel
 	}
 
 	customTradesModel struct {
@@ -18,12 +20,8 @@ type (
 )
 
 // NewTradesModel returns a model for the database table.
-func NewTradesModel(conn sqlx.SqlConn) TradesModel {
+func NewTradesModel(conn sqlx.SqlConn, c cache.CacheConf, opts ...cache.Option) TradesModel {
 	return &customTradesModel{
-		defaultTradesModel: newTradesModel(conn),
+		defaultTradesModel: newTradesModel(conn, c, opts...),
 	}
-}
-
-func (m *customTradesModel) withSession(session sqlx.Session) TradesModel {
-	return NewTradesModel(sqlx.NewSqlConnFromSession(session))
 }

@@ -280,7 +280,7 @@ func TestConfigModel(t *testing.T) {
 
 func TestConfigClone(t *testing.T) {
 	temp := 0.7
-	maxTokens := 1024
+	maxCompletionTokens := 1024
 
 	original := &Config{
 		BaseURL:      "https://api.example.com",
@@ -291,10 +291,10 @@ func TestConfigClone(t *testing.T) {
 		LogLevel:     "info",
 		Models: map[string]ModelConfig{
 			"gpt-4": {
-				Provider:    "openai",
-				ModelName:   "gpt-4-turbo",
-				Temperature: &temp,
-				MaxTokens:   &maxTokens,
+				Provider:            "openai",
+				ModelName:           "gpt-4-turbo",
+				Temperature:         &temp,
+				MaxCompletionTokens: &maxCompletionTokens,
 			},
 		},
 		timeoutRaw: "30s",
@@ -316,6 +316,8 @@ func TestConfigClone(t *testing.T) {
 	model, ok := cloned.Model("gpt-4")
 	require.True(t, ok)
 	require.Equal(t, "openai", model.Provider)
+	require.NotNil(t, model.MaxCompletionTokens)
+	require.Equal(t, maxCompletionTokens, *model.MaxCompletionTokens)
 
 	// Modify cloned models map to ensure it's a separate copy
 	cloned.Models["gpt-5"] = ModelConfig{Provider: "openai"}

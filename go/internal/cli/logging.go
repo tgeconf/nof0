@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/zeromicro/go-zero/core/logx"
+	"github.com/zeromicro/go-zero/core/stores/cache"
 
 	"nof0-api/internal/config"
 	"nof0-api/pkg/confkit"
@@ -19,8 +20,8 @@ func ConfigSummaryLines(cfg *config.Config) []string {
 	lines := []string{
 		fmt.Sprintf("Environment: %s", cfg.Env),
 		fmt.Sprintf("Data path: %s", cfg.DataPath),
-		fmt.Sprintf("Postgres: %s", presence(cfg.Postgres.DSN != "")),
-		fmt.Sprintf("Redis: %s", presence(strings.TrimSpace(cfg.Redis.Host) != "")),
+		fmt.Sprintf("Postgres: %s", presence(strings.TrimSpace(cfg.Postgres.DataSource) != "")),
+		fmt.Sprintf("Cache: %s", presence(cacheConfigured(cfg.Cache))),
 		fmt.Sprintf("TTL (short/medium/long): %ds / %ds / %ds", cfg.TTL.Short, cfg.TTL.Medium, cfg.TTL.Long),
 		sectionLine("LLM config", cfg.LLM),
 		sectionLine("Executor config", cfg.Executor),
@@ -49,6 +50,15 @@ func presence(ok bool) string {
 		return "configured"
 	}
 	return "not configured"
+}
+
+func cacheConfigured(conf cache.CacheConf) bool {
+	for _, node := range conf {
+		if strings.TrimSpace(node.Host) != "" {
+			return true
+		}
+	}
+	return false
 }
 
 func sectionLine[T any](name string, section confkit.Section[T]) string {

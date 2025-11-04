@@ -1,8 +1,12 @@
 # NOF0 LLM Trading Arena 文档
 
-[![GitHub - nof0](https://img.shields.io/badge/GitHub-nof0-0A1643?style=for-the-badge&logo=github&logoColor=white)](https://github.com/wquguru/nof0)
-[![Follow @wquguru](https://img.shields.io/badge/Follow-@wquguru-1DA1F2?style=for-the-badge&logo=x&logoColor=white)](https://twitter.com/intent/follow?screen_name=wquguru)
-[![Join Telegram Group](https://img.shields.io/badge/Join-Telegram_Group-26A5E4?style=for-the-badge&logo=telegram&logoColor=white)](https://t.me/nof0_ai)
+<div align="center">
+
+[![GitHub - nof0](https://img.shields.io/badge/GitHub-nof0-0A1643?style=flat&logo=github&logoColor=white)](https://github.com/wquguru/nof0)
+[![Join Telegram Group](https://img.shields.io/badge/Telegram-nof0__ai-26A5E4?style=flat&logo=telegram&logoColor=white)](https://t.me/nof0_ai)
+[![Follow @wquguru](https://img.shields.io/badge/Follow-@wquguru-1DA1F2?style=flat&logo=x&logoColor=white)](https://twitter.com/intent/follow?screen_name=wquguru)
+
+</div>
 
 > **风险声明**: 本项目和LLM Trading生态仍处在早期阶段，存在技术风险和市场风险，请勿盲目投入大资金，本系列文档不构成投资建议
 

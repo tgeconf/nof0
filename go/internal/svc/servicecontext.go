@@ -1,14 +1,22 @@
 package svc
 
 import (
+	"database/sql"
 	"log"
+	"strings"
+	"time"
 
 	_ "github.com/jackc/pgx/v5/stdlib" // register pgx driver
+	"github.com/zeromicro/go-zero/core/stores/cache"
+	"github.com/zeromicro/go-zero/core/stores/sqlc"
 	"github.com/zeromicro/go-zero/core/stores/sqlx"
+	"github.com/zeromicro/go-zero/core/syncx"
 
 	"nof0-api/internal/config"
 	"nof0-api/internal/data"
 	"nof0-api/internal/model"
+	"nof0-api/internal/repo"
+	repocache "nof0-api/internal/repo/cache"
 	"nof0-api/pkg/confkit"
 	exchangepkg "nof0-api/pkg/exchange"
 	_ "nof0-api/pkg/exchange/hyperliquid"
@@ -41,6 +49,8 @@ type ServiceContext struct {
 
 	// Optional DB models (injected but unused by handlers/logic for now)
 	DBConn                      sqlx.SqlConn
+	CachedConn                  *sqlc.CachedConn
+	Cache                       cache.Cache
 	ModelsModel                 model.ModelsModel
 	SymbolsModel                model.SymbolsModel
 	PriceTicksModel             model.PriceTicksModel
@@ -52,12 +62,43 @@ type ServiceContext struct {
 	ModelAnalyticsModel         model.ModelAnalyticsModel
 	ConversationsModel          model.ConversationsModel
 	ConversationMessagesModel   model.ConversationMessagesModel
+	DecisionCyclesModel         model.DecisionCyclesModel
+	MarketAssetsModel           model.MarketAssetsModel
+	MarketAssetCtxModel         model.MarketAssetCtxModel
+	TraderStateModel            model.TraderStateModel
+
+	Repos *repo.Set
 }
 
 func NewServiceContext(c config.Config, mainConfigPath string) *ServiceContext {
 	svc := &ServiceContext{
 		Config:     c,
 		DataLoader: data.NewDataLoader(c.DataPath),
+	}
+
+	ttlSet := repocache.NewTTLSet(c.TTL)
+
+	cacheNodes := filterCacheNodes(c.Cache)
+	hasCache := len(cacheNodes) > 0
+	var cacheOpts []cache.Option
+	if c.TTL.Medium > 0 {
+		cacheOpts = append(cacheOpts, cache.WithExpiry(time.Duration(c.TTL.Medium)*time.Second))
+	}
+	if hasCache {
+		svc.Cache = cache.New(cacheNodes, syncx.NewSingleFlight(), cache.NewStat("nof0-cache"), sql.ErrNoRows, cacheOpts...)
+	}
+	if strings.TrimSpace(c.Postgres.DataSource) != "" {
+		conn := sqlx.NewSqlConn("pgx", c.Postgres.DataSource)
+		raw, err := conn.RawDB()
+		if err != nil {
+			log.Fatalf("failed to init postgres raw db: %v", err)
+		}
+		applyPostgresPool(raw, c.Postgres)
+		svc.DBConn = conn
+		if svc.Cache != nil {
+			cached := sqlc.NewConnWithCache(conn, svc.Cache)
+			svc.CachedConn = &cached
+		}
 	}
 
 	baseDir := c.BaseDir()
@@ -205,20 +246,81 @@ func NewServiceContext(c config.Config, mainConfigPath string) *ServiceContext {
 	}
 
 	// Only inject DB models when DSN provided; business logic still uses DataLoader.
-	if c.Postgres.DSN != "" {
-		conn := sqlx.NewSqlConn("pgx", c.Postgres.DSN)
-		svc.DBConn = conn
-		svc.ModelsModel = model.NewModelsModel(conn)
-		svc.SymbolsModel = model.NewSymbolsModel(conn)
-		svc.PriceTicksModel = model.NewPriceTicksModel(conn)
-		svc.PriceLatestModel = model.NewPriceLatestModel(conn)
-		svc.AccountsModel = model.NewAccountsModel(conn)
-		svc.AccountEquitySnapshotsModel = model.NewAccountEquitySnapshotsModel(conn)
-		svc.PositionsModel = model.NewPositionsModel(conn)
-		svc.TradesModel = model.NewTradesModel(conn)
-		svc.ModelAnalyticsModel = model.NewModelAnalyticsModel(conn)
-		svc.ConversationsModel = model.NewConversationsModel(conn)
-		svc.ConversationMessagesModel = model.NewConversationMessagesModel(conn)
+	if svc.DBConn != nil {
+		conn := svc.DBConn
+		if hasCache {
+			svc.ModelsModel = model.NewModelsModel(conn, cacheNodes, cacheOpts...)
+			svc.SymbolsModel = model.NewSymbolsModel(conn, cacheNodes, cacheOpts...)
+			svc.PriceTicksModel = model.NewPriceTicksModel(conn, cacheNodes, cacheOpts...)
+			svc.PriceLatestModel = model.NewPriceLatestModel(conn, cacheNodes, cacheOpts...)
+			svc.AccountsModel = model.NewAccountsModel(conn, cacheNodes, cacheOpts...)
+			svc.AccountEquitySnapshotsModel = model.NewAccountEquitySnapshotsModel(conn, cacheNodes, cacheOpts...)
+			svc.PositionsModel = model.NewPositionsModel(conn, cacheNodes, cacheOpts...)
+			svc.TradesModel = model.NewTradesModel(conn, cacheNodes, cacheOpts...)
+			svc.ModelAnalyticsModel = model.NewModelAnalyticsModel(conn, cacheNodes, cacheOpts...)
+			svc.ConversationsModel = model.NewConversationsModel(conn, cacheNodes, cacheOpts...)
+			svc.ConversationMessagesModel = model.NewConversationMessagesModel(conn, cacheNodes, cacheOpts...)
+			svc.DecisionCyclesModel = model.NewDecisionCyclesModel(conn, cacheNodes, cacheOpts...)
+			svc.MarketAssetsModel = model.NewMarketAssetsModel(conn, cacheNodes, cacheOpts...)
+			svc.MarketAssetCtxModel = model.NewMarketAssetCtxModel(conn, cacheNodes, cacheOpts...)
+			svc.TraderStateModel = model.NewTraderStateModel(conn, cacheNodes, cacheOpts...)
+		}
+
+		repos, err := repo.New(repo.Dependencies{
+			DBConn:                      conn,
+			CachedConn:                  svc.CachedConn,
+			Cache:                       svc.Cache,
+			TTL:                         ttlSet,
+			ModelsModel:                 svc.ModelsModel,
+			SymbolsModel:                svc.SymbolsModel,
+			PriceTicksModel:             svc.PriceTicksModel,
+			PriceLatestModel:            svc.PriceLatestModel,
+			AccountsModel:               svc.AccountsModel,
+			AccountEquitySnapshotsModel: svc.AccountEquitySnapshotsModel,
+			PositionsModel:              svc.PositionsModel,
+			TradesModel:                 svc.TradesModel,
+			ModelAnalyticsModel:         svc.ModelAnalyticsModel,
+			ConversationsModel:          svc.ConversationsModel,
+			ConversationMessagesModel:   svc.ConversationMessagesModel,
+			DecisionCyclesModel:         svc.DecisionCyclesModel,
+			MarketAssetsModel:           svc.MarketAssetsModel,
+			MarketAssetCtxModel:         svc.MarketAssetCtxModel,
+			TraderStateModel:            svc.TraderStateModel,
+		})
+		if err != nil {
+			log.Fatalf("failed to initialise repositories: %v", err)
+		}
+		svc.Repos = repos
 	}
 	return svc
+}
+
+func applyPostgresPool(db *sql.DB, cfg config.PostgresConf) {
+	if cfg.MaxIdle > 0 {
+		db.SetMaxIdleConns(cfg.MaxIdle)
+	}
+	if cfg.MaxOpen > 0 {
+		db.SetMaxOpenConns(cfg.MaxOpen)
+	}
+	if cfg.MaxLifetime > 0 {
+		db.SetConnMaxLifetime(cfg.MaxLifetime)
+	} else {
+		db.SetConnMaxLifetime(5 * time.Minute)
+	}
+}
+
+func filterCacheNodes(conf cache.CacheConf) cache.CacheConf {
+	nodes := make(cache.CacheConf, 0, len(conf))
+	for _, node := range conf {
+		host := strings.TrimSpace(node.Host)
+		if host == "" {
+			continue
+		}
+		if strings.TrimSpace(node.Type) == "" {
+			node.Type = "node"
+		}
+		node.Host = host
+		nodes = append(nodes, node)
+	}
+	return nodes
 }

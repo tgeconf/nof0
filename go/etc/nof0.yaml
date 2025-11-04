@@ -4,18 +4,24 @@ Host: 0.0.0.0
 Port: 8888
 DataPath: ../mcp/data
 
-# Enable DB/Cache by setting Postgres.DSN and Redis.Host below.
+# Enable DB/Cache by setting Postgres.DataSource and Cache nodes below.
+# Note: we intentionally reference environment variables via ${...}.
+# go-zero's conf.Load(..., conf.UseEnv()) only expands these placeholders;
+# it does NOT auto-map raw env keys like Postgres__DataSource unless YAML pulls them in.
 Postgres:
   # Example: postgres://user:pass@localhost:5432/nof0?sslmode=disable
-  DSN: ""
+  DataSource: "${Postgres__DataSource}"
   MaxOpen: 10
   MaxIdle: 5
+  MaxLifetime: 5m
 
-Redis:
-  Host: ""
-  Type: node
-  Pass: ""
-  Tls: false
+Cache:
+  # Cache__0__* keys must also be surfaced through YAML; raw env vars alone are ignored.
+  - Host: "${Cache__0__Host}"
+    Type: node
+    Pass: "${Cache__0__Pass}"
+    Tls: ${Cache__0__Tls}
+    Weight: 100
 
 TTL:
   Short: 10     # seconds for fast-changing data (e.g., prices)

@@ -33,7 +33,7 @@ models:
     provider: "openai"
     model_name: "openai/gpt-5"
     temperature: 0.5
-    max_tokens: 1024
+    max_completion_tokens: 1024
 `
 
 	cfg, err := LoadConfigFromReader(strings.NewReader(data))
@@ -51,6 +51,8 @@ models:
 	require.Equal(t, "openai/gpt-5", model.ModelName)
 	require.NotNil(t, model.Temperature)
 	require.InDelta(t, 0.5, *model.Temperature, 0.0001)
+	require.NotNil(t, model.MaxCompletionTokens)
+	require.Equal(t, 1024, *model.MaxCompletionTokens)
 }
 
 func TestClientChat(t *testing.T) {
@@ -118,11 +120,13 @@ func TestClientChat(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 
+	limit := 64
 	resp, err := client.Chat(ctx, &ChatRequest{
 		Model: "gpt-5",
 		Messages: []Message{
 			{Role: "user", Content: "hi"},
 		},
+		MaxCompletionTokens: &limit,
 	})
 	require.NoError(t, err)
 
@@ -137,6 +141,9 @@ func TestClientChat(t *testing.T) {
 	var payload map[string]any
 	require.NoError(t, json.Unmarshal(lastBody, &payload))
 	require.Equal(t, "openai/gpt-5", payload["model"])
+	require.EqualValues(t, limit, payload["max_completion_tokens"])
+	_, hasDeprecated := payload["max_tokens"]
+	require.False(t, hasDeprecated, "max_tokens should not be sent")
 	require.Equal(t, 1, callCount)
 }
 

@@ -274,8 +274,8 @@ func (c *Client) chatRaw(ctx context.Context, req *ChatRequest, modelID string) 
 	if req.Temperature != nil {
 		body["temperature"] = *req.Temperature
 	}
-	if req.MaxTokens != nil {
-		body["max_tokens"] = *req.MaxTokens
+	if req.MaxCompletionTokens != nil {
+		body["max_completion_tokens"] = *req.MaxCompletionTokens
 	}
 	if req.TopP != nil {
 		body["top_p"] = *req.TopP
@@ -498,10 +498,10 @@ func (c *Client) buildChatParams(req *ChatRequest) (openai.ChatCompletionNewPara
 		params.Temperature = openai.Float(*modelCfg.Temperature)
 	}
 
-	if req.MaxTokens != nil {
-		params.MaxTokens = openai.Int(int64(*req.MaxTokens))
-	} else if modelCfg.MaxTokens != nil {
-		params.MaxTokens = openai.Int(int64(*modelCfg.MaxTokens))
+	if req.MaxCompletionTokens != nil {
+		params.MaxCompletionTokens = openai.Int(int64(*req.MaxCompletionTokens))
+	} else if modelCfg.MaxCompletionTokens != nil {
+		params.MaxCompletionTokens = openai.Int(int64(*modelCfg.MaxCompletionTokens))
 	}
 
 	if req.TopP != nil {

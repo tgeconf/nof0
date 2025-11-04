@@ -1,6 +1,9 @@
 package model
 
-import "github.com/zeromicro/go-zero/core/stores/sqlx"
+import (
+	"github.com/zeromicro/go-zero/core/stores/cache"
+	"github.com/zeromicro/go-zero/core/stores/sqlx"
+)
 
 var _ PriceTicksModel = (*customPriceTicksModel)(nil)
 
@@ -9,7 +12,6 @@ type (
 	// and implement the added methods in customPriceTicksModel.
 	PriceTicksModel interface {
 		priceTicksModel
-		withSession(session sqlx.Session) PriceTicksModel
 	}
 
 	customPriceTicksModel struct {
@@ -18,12 +20,8 @@ type (
 )
 
 // NewPriceTicksModel returns a model for the database table.
-func NewPriceTicksModel(conn sqlx.SqlConn) PriceTicksModel {
+func NewPriceTicksModel(conn sqlx.SqlConn, c cache.CacheConf, opts ...cache.Option) PriceTicksModel {
 	return &customPriceTicksModel{
-		defaultPriceTicksModel: newPriceTicksModel(conn),
+		defaultPriceTicksModel: newPriceTicksModel(conn, c, opts...),
 	}
-}
-
-func (m *customPriceTicksModel) withSession(session sqlx.Session) PriceTicksModel {
-	return NewPriceTicksModel(sqlx.NewSqlConnFromSession(session))
 }

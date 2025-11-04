@@ -1,6 +1,9 @@
 package model
 
-import "github.com/zeromicro/go-zero/core/stores/sqlx"
+import (
+	"github.com/zeromicro/go-zero/core/stores/cache"
+	"github.com/zeromicro/go-zero/core/stores/sqlx"
+)
 
 var _ ModelAnalyticsModel = (*customModelAnalyticsModel)(nil)
 
@@ -9,7 +12,6 @@ type (
 	// and implement the added methods in customModelAnalyticsModel.
 	ModelAnalyticsModel interface {
 		modelAnalyticsModel
-		withSession(session sqlx.Session) ModelAnalyticsModel
 	}
 
 	customModelAnalyticsModel struct {
@@ -18,12 +20,8 @@ type (
 )
 
 // NewModelAnalyticsModel returns a model for the database table.
-func NewModelAnalyticsModel(conn sqlx.SqlConn) ModelAnalyticsModel {
+func NewModelAnalyticsModel(conn sqlx.SqlConn, c cache.CacheConf, opts ...cache.Option) ModelAnalyticsModel {
 	return &customModelAnalyticsModel{
-		defaultModelAnalyticsModel: newModelAnalyticsModel(conn),
+		defaultModelAnalyticsModel: newModelAnalyticsModel(conn, c, opts...),
 	}
-}
-
-func (m *customModelAnalyticsModel) withSession(session sqlx.Session) ModelAnalyticsModel {
-	return NewModelAnalyticsModel(sqlx.NewSqlConnFromSession(session))
 }
