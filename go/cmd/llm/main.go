@@ -8,6 +8,7 @@ import (
 	"os/signal"
 	"strings"
 	"syscall"
+	"time"
 
 	"github.com/zeromicro/go-zero/core/logx"
 
@@ -386,6 +387,7 @@ func main() {
 			AssetsModel:      svcCtx.MarketAssetsModel,
 			AssetCtxModel:    svcCtx.MarketAssetCtxModel,
 			PriceLatestModel: svcCtx.PriceLatestModel,
+			PriceTicksModel:  svcCtx.PriceTicksModel,
 			Cache:            svcCtx.Cache,
 			TTL:              ttlSet,
 		})
@@ -405,6 +407,13 @@ func main() {
 			}
 		}
 	}
+	ingestor := newMarketIngestor(filteredMarkets, allowedSymbols, 45*time.Second, 30*time.Minute, 150*time.Millisecond)
+	if ingestor != nil {
+		warmCtx, warmCancel := context.WithTimeout(context.Background(), 2*time.Minute)
+		ingestor.refreshAssets(warmCtx, true)
+		ingestor.refreshSnapshots(warmCtx)
+		warmCancel()
+	}
 	var conversationRecorder executorpkg.ConversationRecorder
 	if rec, ok := persistService.(executorpkg.ConversationRecorder); ok {
 		conversationRecorder = rec
@@ -413,16 +422,30 @@ func main() {
 
 	mgr := managerpkg.NewManager(managerCfg, execFactory, exchangeProviders, filteredMarkets, persistService)
 
+	traderIDs := make([]string, 0, len(managerCfg.Traders))
 	for _, traderCfg := range managerCfg.Traders {
 		vt, regErr := mgr.RegisterTrader(traderCfg)
 		if regErr != nil {
 			fatalf("register trader %s: %v", traderCfg.ID, regErr)
 		}
 		logx.Infof("registered trader %s (%s) using exchange=%s market=%s model=%s", vt.ID, vt.Name, traderCfg.ExchangeProvider, traderCfg.MarketProvider, traderCfg.Model)
+		traderIDs = append(traderIDs, vt.ID)
+	}
+
+	if persistService != nil && len(traderIDs) > 0 {
+		hydrateCtx, hydrateCancel := context.WithTimeout(context.Background(), 30*time.Second)
+		if err := persistService.HydrateCaches(hydrateCtx, traderIDs); err != nil {
+			logx.WithContext(hydrateCtx).Errorf("manager: hydrate caches err=%v", err)
+		}
+		hydrateCancel()
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
+
+	if ingestor != nil {
+		go ingestor.run(ctx)
+	}
 
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)

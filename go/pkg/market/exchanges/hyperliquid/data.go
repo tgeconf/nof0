@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math"
 	"strings"
+	"time"
 
 	"nof0-api/pkg/market"
 	"nof0-api/pkg/market/indicators"
@@ -20,28 +21,28 @@ const (
 	priceChange4hLookback  = 1
 )
 
-func (c *Client) buildSnapshot(ctx context.Context, symbol string) (*market.Snapshot, error) {
+func (c *Client) buildSnapshot(ctx context.Context, symbol string) (*market.Snapshot, []market.PriceTick, error) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
 
 	info, err := c.GetMarketInfo(ctx, symbol)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	intradayKlines, err := c.GetKlines(ctx, info.Symbol, intradayInterval, intradayLookback)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	longerKlines, err := c.GetKlines(ctx, info.Symbol, longerInterval, longerLookback)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	lastPrice, err := c.getCurrentPriceForCanonical(ctx, info.Symbol)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	intradaySeries, intradaySignals := buildIntradaySeries(intradayKlines)
@@ -114,7 +115,8 @@ func (c *Client) buildSnapshot(ctx context.Context, symbol string) (*market.Snap
 		LongTerm:     longerSeries,
 	}
 
-	return snapshot, nil
+	ticks := append(buildPriceTicks(intradayInterval, intradayKlines), buildPriceTicks(longerInterval, longerKlines)...)
+	return snapshot, ticks, nil
 }
 
 func (c *Client) getCurrentPriceForCanonical(ctx context.Context, symbol string) (float64, error) {
@@ -211,6 +213,34 @@ func buildLongerSeries(klines []Kline) (*market.SeriesBundle, *indicatorSnapshot
 		rsi14: latestNonNaN(rsi14),
 	}
 	return series, snapshot
+}
+
+func buildPriceTicks(interval string, klines []Kline) []market.PriceTick {
+	ticks := make([]market.PriceTick, 0, len(klines))
+	for _, k := range klines {
+		ts := k.CloseTime
+		if ts == 0 {
+			ts = k.OpenTime
+		}
+		if ts == 0 || !(k.Close > 0) {
+			continue
+		}
+		tick := market.PriceTick{
+			Timestamp: time.UnixMilli(ts),
+			Price:     k.Close,
+			Interval:  interval,
+			Open:      k.Open,
+			High:      k.High,
+			Low:       k.Low,
+			Close:     k.Close,
+		}
+		if k.Volume > 0 {
+			tick.Volume = k.Volume
+			tick.HasVolume = true
+		}
+		ticks = append(ticks, tick)
+	}
+	return ticks
 }
 
 // calculatePriceChange returns the fractional change (e.g., 0.01 == +1%).

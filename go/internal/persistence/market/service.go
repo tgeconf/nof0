@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/lib/pq"
 	"github.com/zeromicro/go-zero/core/logx"
 	gocache "github.com/zeromicro/go-zero/core/stores/cache"
 	"github.com/zeromicro/go-zero/core/stores/sqlx"
@@ -24,6 +25,7 @@ type Service struct {
 	assetsModel      model.MarketAssetsModel
 	assetCtxModel    model.MarketAssetCtxModel
 	priceLatestModel model.PriceLatestModel
+	priceTicksModel  model.PriceTicksModel
 	cache            gocache.Cache
 	ttl              cachekeys.TTLSet
 }
@@ -34,6 +36,7 @@ type Config struct {
 	AssetsModel      model.MarketAssetsModel
 	AssetCtxModel    model.MarketAssetCtxModel
 	PriceLatestModel model.PriceLatestModel
+	PriceTicksModel  model.PriceTicksModel
 	Cache            gocache.Cache
 	TTL              cachekeys.TTLSet
 }
@@ -48,6 +51,7 @@ func NewService(cfg Config) market.Persistence {
 		assetsModel:      cfg.AssetsModel,
 		assetCtxModel:    cfg.AssetCtxModel,
 		priceLatestModel: cfg.PriceLatestModel,
+		priceTicksModel:  cfg.PriceTicksModel,
 		cache:            cfg.Cache,
 		ttl:              cfg.TTL,
 	}
@@ -155,6 +159,42 @@ ON CONFLICT (provider, symbol) DO UPDATE SET
 	return nil
 }
 
+// RecordPriceSeries persists historical ticks (typically OHLCV candles).
+func (s *Service) RecordPriceSeries(ctx context.Context, provider string, symbol string, ticks []market.PriceTick) error {
+	if s == nil || s.priceTicksModel == nil {
+		return nil
+	}
+	provider = strings.TrimSpace(provider)
+	symbol = strings.ToUpper(strings.TrimSpace(symbol))
+	if provider == "" || symbol == "" || len(ticks) == 0 {
+		return nil
+	}
+	for _, tick := range ticks {
+		if tick.Timestamp.IsZero() || !(tick.Price > 0) {
+			continue
+		}
+		row := &model.PriceTicks{
+			Provider: provider,
+			Symbol:   symbol,
+			Price:    tick.Price,
+			TsMs:     tick.Timestamp.UTC().UnixMilli(),
+		}
+		if tick.HasVolume {
+			row.Volume = sql.NullFloat64{Float64: tick.Volume, Valid: true}
+		}
+		if raw := buildTickRaw(tick); raw.Valid {
+			row.Raw = raw
+		}
+		if _, err := s.priceTicksModel.Insert(ctx, row); err != nil {
+			if isUniqueViolation(err) {
+				continue
+			}
+			return err
+		}
+	}
+	return nil
+}
+
 func (s *Service) cacheAsset(ctx context.Context, provider string, asset market.Asset) {
 	if s.cache == nil {
 		return
@@ -248,6 +288,24 @@ func (s *Service) updateCryptoPrices(ctx context.Context, provider, symbol strin
 	}
 }
 
+func buildTickRaw(tick market.PriceTick) sql.NullString {
+	payload := map[string]any{
+		"interval": tick.Interval,
+		"open":     tick.Open,
+		"high":     tick.High,
+		"low":      tick.Low,
+		"close":    tick.Close,
+	}
+	if tick.HasVolume {
+		payload["volume"] = tick.Volume
+	}
+	data, err := json.Marshal(payload)
+	if err != nil {
+		return sql.NullString{}
+	}
+	return sql.NullString{String: string(data), Valid: true}
+}
+
 func nullFloatFromMeta(meta map[string]any, keys ...string) sql.NullFloat64 {
 	for _, key := range keys {
 		if v, ok := meta[key]; ok {
@@ -317,4 +375,12 @@ func toFloat64(v any) (float64, bool) {
 	default:
 		return 0, false
 	}
+}
+
+func isUniqueViolation(err error) bool {
+	if err == nil {
+		return false
+	}
+	pgErr, ok := err.(*pq.Error)
+	return ok && pgErr.Code == "23505"
 }

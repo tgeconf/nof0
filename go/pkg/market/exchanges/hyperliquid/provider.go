@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/zeromicro/go-zero/core/logx"
@@ -20,6 +21,9 @@ type Provider struct {
 	timeout     time.Duration
 	persistence market.Persistence
 	providerID  string
+	cacheMu     sync.RWMutex
+	snapshots   map[string]cachedSnapshot
+	assets      cachedAssets
 }
 
 type providerConfig struct {
@@ -57,8 +61,9 @@ func NewProvider(opts ...ProviderOption) *Provider {
 
 	client := NewClient(cfg.clientConfig...)
 	return &Provider{
-		client:  client,
-		timeout: cfg.timeout,
+		client:    client,
+		timeout:   cfg.timeout,
+		snapshots: make(map[string]cachedSnapshot),
 	}
 }
 
@@ -91,19 +96,30 @@ func init() {
 func (p *Provider) Snapshot(ctx context.Context, symbol string) (*market.Snapshot, error) {
 	ctx, cancel := p.withTimeout(ctx)
 	defer cancel()
-	snap, err := p.client.buildSnapshot(ctx, symbol)
-	if err == nil && snap != nil && p.persistence != nil {
-		if persistErr := p.persistence.RecordSnapshot(ctx, p.providerName(), snap); persistErr != nil {
-			logx.WithContext(ctx).Errorf("hyperliquid: persist snapshot %s err=%v", symbol, persistErr)
+	if snap, ok := p.loadSnapshot(symbol); ok {
+		return snap, nil
+	}
+	snap, ticks, err := p.client.buildSnapshot(ctx, symbol)
+	if err != nil {
+		return nil, err
+	}
+	p.persistSnapshot(ctx, symbol, snap)
+	if len(ticks) > 0 && p.persistence != nil {
+		if err := p.persistence.RecordPriceSeries(ctx, p.providerName(), symbol, ticks); err != nil {
+			logx.WithContext(ctx).Errorf("hyperliquid: persist price series symbol=%s err=%v", symbol, err)
 		}
 	}
-	return snap, err
+	p.storeSnapshot(symbol, snap)
+	return snap, nil
 }
 
 // ListAssets implements market.Provider by returning all supported symbols.
 func (p *Provider) ListAssets(ctx context.Context) ([]market.Asset, error) {
 	ctx, cancel := p.withTimeout(ctx)
 	defer cancel()
+	if assets, ok := p.loadAssets(); ok {
+		return assets, nil
+	}
 
 	if err := p.client.refreshSymbolDirectory(ctx); err != nil {
 		return nil, err
@@ -114,6 +130,7 @@ func (p *Provider) ListAssets(ctx context.Context) ([]market.Asset, error) {
 			logx.WithContext(ctx).Errorf("hyperliquid: persist assets err=%v", err)
 		}
 	}
+	p.storeAssets(assets)
 	return assets, nil
 }
 
@@ -161,6 +178,64 @@ func (p *Provider) withTimeout(ctx context.Context) (context.Context, context.Ca
 // SetPersistence wires a persistence layer for market data.
 func (p *Provider) SetPersistence(persist market.Persistence) {
 	p.persistence = persist
+}
+
+const (
+	snapshotCacheTTL = 15 * time.Second
+	assetCacheTTL    = 5 * time.Minute
+)
+
+type cachedSnapshot struct {
+	Snapshot *market.Snapshot
+	Fetched  time.Time
+}
+
+type cachedAssets struct {
+	Assets  []market.Asset
+	Fetched time.Time
+}
+
+func (p *Provider) loadSnapshot(symbol string) (*market.Snapshot, bool) {
+	p.cacheMu.RLock()
+	defer p.cacheMu.RUnlock()
+	entry, ok := p.snapshots[strings.ToUpper(symbol)]
+	if !ok || time.Since(entry.Fetched) > snapshotCacheTTL || entry.Snapshot == nil {
+		return nil, false
+	}
+	copied := *entry.Snapshot
+	return &copied, true
+}
+
+func (p *Provider) storeSnapshot(symbol string, snapshot *market.Snapshot) {
+	if snapshot == nil {
+		return
+	}
+	copy := *snapshot
+	p.cacheMu.Lock()
+	defer p.cacheMu.Unlock()
+	if p.snapshots == nil {
+		p.snapshots = make(map[string]cachedSnapshot)
+	}
+	p.snapshots[strings.ToUpper(symbol)] = cachedSnapshot{Snapshot: &copy, Fetched: time.Now()}
+}
+
+func (p *Provider) loadAssets() ([]market.Asset, bool) {
+	p.cacheMu.RLock()
+	defer p.cacheMu.RUnlock()
+	if len(p.assets.Assets) == 0 || time.Since(p.assets.Fetched) > assetCacheTTL {
+		return nil, false
+	}
+	assets := make([]market.Asset, len(p.assets.Assets))
+	copy(assets, p.assets.Assets)
+	return assets, true
+}
+
+func (p *Provider) storeAssets(assets []market.Asset) {
+	p.cacheMu.Lock()
+	defer p.cacheMu.Unlock()
+	clone := make([]market.Asset, len(assets))
+	copy(clone, assets)
+	p.assets = cachedAssets{Assets: clone, Fetched: time.Now()}
 }
 
 func (p *Provider) providerName() string {

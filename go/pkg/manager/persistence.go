@@ -68,6 +68,7 @@ type PersistenceService interface {
 	RecordDecisionCycle(ctx context.Context, record DecisionCycleRecord) error
 	RecordAccountSnapshot(ctx context.Context, snapshot AccountSyncSnapshot) error
 	RecordAnalytics(ctx context.Context, snapshot AnalyticsSnapshot) error
+	HydrateCaches(ctx context.Context, traderIDs []string) error
 }
 
 type noopPersistenceService struct{}
@@ -85,6 +86,10 @@ func (noopPersistenceService) RecordAccountSnapshot(ctx context.Context, snapsho
 }
 
 func (noopPersistenceService) RecordAnalytics(ctx context.Context, snapshot AnalyticsSnapshot) error {
+	return nil
+}
+
+func (noopPersistenceService) HydrateCaches(ctx context.Context, traderIDs []string) error {
 	return nil
 }
 

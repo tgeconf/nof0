@@ -4,8 +4,10 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -13,12 +15,14 @@ import (
 	"github.com/lib/pq"
 	"github.com/zeromicro/go-zero/core/logx"
 	gocache "github.com/zeromicro/go-zero/core/stores/cache"
+	"github.com/zeromicro/go-zero/core/stores/sqlc"
 	"github.com/zeromicro/go-zero/core/stores/sqlx"
 
 	cachekeys "nof0-api/internal/cache"
 	"nof0-api/internal/model"
 	"nof0-api/pkg/exchange"
 	executorpkg "nof0-api/pkg/executor"
+	journal "nof0-api/pkg/journal"
 	managerpkg "nof0-api/pkg/manager"
 )
 
@@ -220,6 +224,337 @@ func (s *Service) RecordAnalytics(ctx context.Context, snapshot managerpkg.Analy
 	s.cacheSinceInception(ctx, snapshot.TraderID, payload)
 	s.cacheLeaderboardScore(ctx, snapshot.TraderID, snapshot.TotalPnLPct)
 	return nil
+}
+
+// HydrateCaches reloads cache state for provided trader IDs. Currently best-effort no-op
+// until dedicated cache warmup jobs are implemented.
+func (s *Service) HydrateCaches(ctx context.Context, traderIDs []string) error {
+	if s == nil || s.cache == nil {
+		return nil
+	}
+	ids := normalizeIDs(traderIDs)
+	if len(ids) == 0 {
+		return nil
+	}
+	var errs []error
+	if s.positionsModel != nil {
+		if err := s.hydratePositions(ctx, ids); err != nil {
+			errs = append(errs, err)
+		}
+	}
+	if s.tradesModel != nil {
+		if err := s.hydrateTrades(ctx, ids); err != nil {
+			errs = append(errs, err)
+		}
+	}
+	if s.analyticsModel != nil {
+		if err := s.hydrateAnalytics(ctx, ids); err != nil {
+			errs = append(errs, err)
+		}
+	}
+	if s.decisionModel != nil {
+		if err := s.hydrateDecisionCycles(ctx, ids); err != nil {
+			errs = append(errs, err)
+		}
+	}
+	if s.analyticsModel != nil {
+		if err := s.hydrateLeaderboard(ctx, ids); err != nil {
+			errs = append(errs, err)
+		}
+	}
+	return errorsJoin(errs)
+}
+
+func (s *Service) hydratePositions(ctx context.Context, traderIDs []string) error {
+	data, err := s.positionsModel.ActiveByModels(ctx, traderIDs)
+	if err != nil {
+		return err
+	}
+	remaining := make(map[string]struct{}, len(traderIDs))
+	for _, id := range traderIDs {
+		remaining[id] = struct{}{}
+	}
+	now := time.Now().UTC().UnixMilli()
+	for modelID, records := range data {
+		delete(remaining, modelID)
+		entries := make(map[string]positionCacheEntry, len(records))
+		for _, rec := range records {
+			symbol := strings.ToUpper(strings.TrimSpace(rec.Symbol))
+			if symbol == "" {
+				continue
+			}
+			entry := positionCacheEntry{
+				Symbol:      symbol,
+				Side:        strings.ToLower(strings.TrimSpace(rec.Side)),
+				Quantity:    rec.Quantity,
+				EntryPrice:  rec.EntryPrice,
+				Leverage:    floatPtrValue(rec.Leverage),
+				Confidence:  floatPtrValue(rec.Confidence),
+				RiskUSD:     floatPtrValue(rec.RiskUsd),
+				UpdatedAtMs: now,
+				Exchange:    strings.TrimSpace(rec.ExchangeProvider),
+			}
+			if rec.UnrealizedPnl != nil {
+				entry.RiskUSD = floatPtrValue(rec.UnrealizedPnl)
+			}
+			entries[symbol] = entry
+		}
+		s.persistPositionCache(ctx, modelID, entries)
+	}
+	for modelID := range remaining {
+		s.persistPositionCache(ctx, modelID, nil)
+	}
+	return nil
+}
+
+func (s *Service) persistPositionCache(ctx context.Context, modelID string, payload map[string]positionCacheEntry) {
+	if s.cache == nil {
+		return
+	}
+	key := cachekeys.PositionsHashKey(modelID)
+	if len(payload) == 0 {
+		if err := s.cache.DelCtx(ctx, key); err != nil && !s.cache.IsNotFound(err) {
+			logx.WithContext(ctx).Errorf("enginepersist: hydrate positions del key=%s err=%v", key, err)
+		}
+		return
+	}
+	ttl := s.ttlDuration(cachekeys.PositionsTTL(s.ttl))
+	if ttl <= 0 {
+		return
+	}
+	if err := s.cache.SetWithExpireCtx(ctx, key, payload, ttl); err != nil {
+		logx.WithContext(ctx).Errorf("enginepersist: hydrate positions set key=%s err=%v", key, err)
+	}
+}
+
+func (s *Service) hydrateTrades(ctx context.Context, traderIDs []string) error {
+	for _, modelID := range traderIDs {
+		records, err := s.tradesModel.RecentByModel(ctx, modelID, recentTradesLimit)
+		if err != nil {
+			return err
+		}
+		entries := make([]tradeCacheEntry, 0, len(records))
+		for _, rec := range records {
+			entry := tradeCacheEntry{
+				ModelID:      rec.ModelID,
+				Symbol:       strings.ToUpper(strings.TrimSpace(rec.Symbol)),
+				Side:         strings.ToLower(strings.TrimSpace(rec.Side)),
+				Quantity:     floatPtrValue(rec.Quantity),
+				EntryPrice:   floatPtrValue(rec.EntryPrice),
+				ExitPrice:    floatPtrValue(rec.ExitPrice),
+				RealizedPnL:  floatPtrValue(rec.RealizedNetPnl),
+				Confidence:   floatPtrValue(rec.Confidence),
+				ClosedAtMs:   intPtrValue(rec.ExitTsMs),
+				Exchange:     strings.TrimSpace(rec.ExchangeProvider),
+				EntryTimeMs:  rec.EntryTsMs,
+				Leverage:     floatPtrValue(rec.Leverage),
+				PositionSize: floatPtrValue(rec.EntrySz),
+			}
+			if entry.ClosedAtMs == 0 && rec.EntryTsMs > 0 {
+				entry.ClosedAtMs = rec.EntryTsMs
+			}
+			entries = append(entries, entry)
+		}
+		s.persistTradeCache(ctx, modelID, entries)
+	}
+	return nil
+}
+
+func (s *Service) persistTradeCache(ctx context.Context, modelID string, entries []tradeCacheEntry) {
+	if s.cache == nil {
+		return
+	}
+	key := cachekeys.TradesRecentKey(modelID)
+	if len(entries) == 0 {
+		if err := s.cache.DelCtx(ctx, key); err != nil && !s.cache.IsNotFound(err) {
+			logx.WithContext(ctx).Errorf("enginepersist: hydrate trades del key=%s err=%v", key, err)
+		}
+		return
+	}
+	ttl := s.ttlDuration(cachekeys.TradesRecentTTL(s.ttl))
+	if ttl <= 0 {
+		return
+	}
+	if err := s.cache.SetWithExpireCtx(ctx, key, entries, ttl); err != nil {
+		logx.WithContext(ctx).Errorf("enginepersist: hydrate trades set key=%s err=%v", key, err)
+	}
+}
+
+func (s *Service) hydrateAnalytics(ctx context.Context, traderIDs []string) error {
+	for _, modelID := range traderIDs {
+		row, err := s.analyticsModel.FindOne(ctx, modelID)
+		if err != nil {
+			if err == model.ErrNotFound {
+				continue
+			}
+			return err
+		}
+		var payload map[string]any
+		if err := json.Unmarshal([]byte(row.Payload), &payload); err != nil {
+			logx.WithContext(ctx).Errorf("enginepersist: hydrate analytics unmarshal model=%s err=%v", modelID, err)
+			continue
+		}
+		s.cacheAnalyticsPayload(ctx, modelID, payload)
+		s.cacheSinceInception(ctx, modelID, payload)
+		if score, ok := numericValue(payload["total_pnl_usd"]); ok {
+			s.cacheLeaderboardScore(ctx, modelID, score)
+		}
+	}
+	return nil
+}
+
+func (s *Service) hydrateLeaderboard(ctx context.Context, traderIDs []string) error {
+	for _, modelID := range traderIDs {
+		row, err := s.analyticsModel.FindOne(ctx, modelID)
+		if err != nil {
+			if err == model.ErrNotFound {
+				continue
+			}
+			return err
+		}
+		var payload map[string]any
+		if err := json.Unmarshal([]byte(row.Payload), &payload); err != nil {
+			logx.WithContext(ctx).Errorf("enginepersist: hydrate leaderboard unmarshal model=%s err=%v", modelID, err)
+			continue
+		}
+		if score, ok := numericValue(payload["total_pnl_usd"]); ok {
+			s.cacheLeaderboardScore(ctx, modelID, score)
+		}
+	}
+	return nil
+}
+
+func (s *Service) hydrateDecisionCycles(ctx context.Context, traderIDs []string) error {
+	if s.sqlConn == nil {
+		return nil
+	}
+	const query = `SELECT success, error_message, decisions, executed_at FROM public.decision_cycles WHERE model_id = $1 ORDER BY executed_at DESC LIMIT 1`
+	for _, modelID := range traderIDs {
+		var row struct {
+			Success      bool           `db:"success"`
+			ErrorMessage sql.NullString `db:"error_message"`
+			Decisions    sql.NullString `db:"decisions"`
+			ExecutedAt   time.Time      `db:"executed_at"`
+		}
+		if err := s.sqlConn.QueryRowCtx(ctx, &row, query, modelID); err != nil {
+			if errors.Is(err, sql.ErrNoRows) || errors.Is(err, sqlc.ErrNotFound) {
+				continue
+			}
+			return err
+		}
+		actions := make([]map[string]any, 0)
+		if row.Decisions.Valid && strings.TrimSpace(row.Decisions.String) != "" {
+			var raw []map[string]any
+			if err := json.Unmarshal([]byte(row.Decisions.String), &raw); err != nil {
+				logx.WithContext(ctx).Errorf("enginepersist: hydrate decisions unmarshal model=%s err=%v", modelID, err)
+			} else {
+				for _, d := range raw {
+					action := make(map[string]any)
+					if sym, ok := d["symbol"]; ok {
+						action["symbol"] = sym
+					}
+					if act, ok := d["action"]; ok {
+						action["action"] = act
+					}
+					if conf, ok := d["confidence"]; ok {
+						action["confidence"] = conf
+					}
+					actions = append(actions, action)
+				}
+			}
+		}
+		rec := &journal.CycleRecord{
+			TraderID:  modelID,
+			Timestamp: row.ExecutedAt,
+			Success:   row.Success,
+			ErrorMessage: func() string {
+				if row.ErrorMessage.Valid {
+					return row.ErrorMessage.String
+				}
+				return ""
+			}(),
+			DecisionsJSON: func() string {
+				if row.Decisions.Valid {
+					return row.Decisions.String
+				}
+				return ""
+			}(),
+			Actions: actions,
+		}
+		s.cacheDecisionSummary(ctx, modelID, managerpkg.DecisionCycleRecord{TraderID: modelID, Cycle: rec})
+	}
+	return nil
+}
+
+func normalizeIDs(ids []string) []string {
+	set := make(map[string]struct{}, len(ids))
+	for _, id := range ids {
+		id = strings.ToUpper(strings.TrimSpace(id))
+		if id == "" {
+			continue
+		}
+		set[id] = struct{}{}
+	}
+	out := make([]string, 0, len(set))
+	for id := range set {
+		out = append(out, id)
+	}
+	sort.Strings(out)
+	return out
+}
+
+func numericValue(v any) (float64, bool) {
+	if v == nil {
+		return 0, false
+	}
+	switch t := v.(type) {
+	case float64:
+		return t, true
+	case float32:
+		return float64(t), true
+	case int:
+		return float64(t), true
+	case int64:
+		return float64(t), true
+	case json.Number:
+		f, err := t.Float64()
+		return f, err == nil
+	case string:
+		f, err := strconv.ParseFloat(t, 64)
+		return f, err == nil
+	default:
+		return 0, false
+	}
+}
+
+func floatPtrValue(ptr *float64) float64 {
+	if ptr == nil {
+		return 0
+	}
+	return *ptr
+}
+
+func intPtrValue(ptr *int64) int64 {
+	if ptr == nil {
+		return 0
+	}
+	return *ptr
+}
+
+func errorsJoin(errs []error) error {
+	filtered := make([]error, 0, len(errs))
+	for _, err := range errs {
+		if err != nil {
+			filtered = append(filtered, err)
+		}
+	}
+	if len(filtered) == 0 {
+		return nil
+	}
+	if len(filtered) == 1 {
+		return filtered[0]
+	}
+	return errors.Join(filtered...)
 }
 
 // RecordConversation stores executor prompt/response pairs for debugging.
