@@ -15,6 +15,7 @@ import (
 	"nof0-api/internal/cache"
 	"nof0-api/internal/cli"
 	appconfig "nof0-api/internal/config"
+	"nof0-api/internal/ingest"
 	enginepersist "nof0-api/internal/persistence/engine"
 	marketpersist "nof0-api/internal/persistence/market"
 	"nof0-api/internal/svc"
@@ -407,13 +408,7 @@ func main() {
 			}
 		}
 	}
-	ingestor := newMarketIngestor(filteredMarkets, allowedSymbols, 45*time.Second, 30*time.Minute, 150*time.Millisecond)
-	if ingestor != nil {
-		warmCtx, warmCancel := context.WithTimeout(context.Background(), 2*time.Minute)
-		ingestor.refreshAssets(warmCtx, true)
-		ingestor.refreshSnapshots(warmCtx)
-		warmCancel()
-	}
+	ingestor := ingest.NewMarketIngestor(filteredMarkets, allowedSymbols, 45*time.Second, 30*time.Minute, 150*time.Millisecond)
 	var conversationRecorder executorpkg.ConversationRecorder
 	if rec, ok := persistService.(executorpkg.ConversationRecorder); ok {
 		conversationRecorder = rec
@@ -444,7 +439,7 @@ func main() {
 	defer cancel()
 
 	if ingestor != nil {
-		go ingestor.run(ctx)
+		go ingestor.Run(ctx)
 	}
 
 	sigCh := make(chan os.Signal, 1)

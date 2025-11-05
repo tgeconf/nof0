@@ -1,4 +1,4 @@
-package main
+package ingest
 
 import (
 	"context"
@@ -11,10 +11,10 @@ import (
 	marketpkg "nof0-api/pkg/market"
 )
 
-// marketIngestor periodically fetches market snapshots and asset metadata so that
+// MarketIngestor periodically fetches market snapshots and asset metadata so that
 // persistence hooks can mirror them into Postgres/Redis. It operates on the set
 // of filtered market providers already constrained to the allowed symbol list.
-type marketIngestor struct {
+type MarketIngestor struct {
 	providers      map[string]marketpkg.Provider
 	orderedNames   []string
 	symbols        []string
@@ -29,7 +29,8 @@ const (
 	defaultAssetsTimeout   = 20 * time.Second
 )
 
-func newMarketIngestor(providers map[string]marketpkg.Provider, symbols []string, interval, assetRefresh, delay time.Duration) *marketIngestor {
+// NewMarketIngestor creates a new market data ingestor with the specified configuration.
+func NewMarketIngestor(providers map[string]marketpkg.Provider, symbols []string, interval, assetRefresh, delay time.Duration) *MarketIngestor {
 	if interval <= 0 {
 		interval = 30 * time.Second
 	}
@@ -60,7 +61,7 @@ func newMarketIngestor(providers map[string]marketpkg.Provider, symbols []string
 		seen[sym] = struct{}{}
 		uniqueSymbols = append(uniqueSymbols, sym)
 	}
-	return &marketIngestor{
+	return &MarketIngestor{
 		providers:      providers,
 		orderedNames:   ordered,
 		symbols:        uniqueSymbols,
@@ -71,8 +72,8 @@ func newMarketIngestor(providers map[string]marketpkg.Provider, symbols []string
 	}
 }
 
-// run starts the ingestion loop and blocks until the context is cancelled.
-func (m *marketIngestor) run(ctx context.Context) {
+// Run starts the ingestion loop and blocks until the context is cancelled.
+func (m *MarketIngestor) Run(ctx context.Context) {
 	if m == nil || len(m.orderedNames) == 0 || len(m.symbols) == 0 {
 		return
 	}
@@ -91,7 +92,7 @@ func (m *marketIngestor) run(ctx context.Context) {
 	}
 }
 
-func (m *marketIngestor) refreshAssets(ctx context.Context, force bool) {
+func (m *MarketIngestor) refreshAssets(ctx context.Context, force bool) {
 	if m.assetRefresh == 0 && !force {
 		return
 	}
@@ -120,7 +121,7 @@ func (m *marketIngestor) refreshAssets(ctx context.Context, force bool) {
 	}
 }
 
-func (m *marketIngestor) refreshSnapshots(ctx context.Context) {
+func (m *MarketIngestor) refreshSnapshots(ctx context.Context) {
 	for _, name := range m.orderedNames {
 		prov := m.providers[name]
 		if prov == nil {
