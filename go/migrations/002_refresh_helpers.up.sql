@@ -1,7 +1,5 @@
 -- Helper materialized views and refresh routine for NOF0 storage redesign.
 
-BEGIN;
-
 CREATE MATERIALIZED VIEW IF NOT EXISTS v_crypto_prices_latest AS
 SELECT
     pl.provider,
@@ -105,5 +103,3 @@ BEGIN
     REFRESH MATERIALIZED VIEW v_since_inception;
 END;
 $$;
-
-COMMIT;

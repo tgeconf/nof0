@@ -1,8 +1,6 @@
 -- NOF0 baseline schema.
 -- Creates core Postgres tables needed to migrate off JSON loaders.
 
-BEGIN;
-
 CREATE TABLE IF NOT EXISTS models (
     id TEXT PRIMARY KEY,
     display_name TEXT NOT NULL,
@@ -259,5 +257,3 @@ CREATE TABLE IF NOT EXISTS trader_state (
     pause_until TIMESTAMPTZ,
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
-
-COMMIT;

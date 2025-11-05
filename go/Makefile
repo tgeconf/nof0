@@ -1,30 +1,39 @@
-.PHONY: help run build clean test test-unit test-integration test-all test-bench test-cover test-race lint fmt check install deps migrate-up migrate-down
+.PHONY: help deps run build build-linux build-windows clean \
+	migrate-up migrate-down migrate-create migrate-status migrate-force model-gen \
+	test test-unit test-integration test-all test-bench test-cover test-race \
+	lint fmt check check-all install
 
+# =============================================================================
 # Variables
+# =============================================================================
 APP_NAME=nof0-api
 CONFIG_FILE=etc/nof0.yaml
 BUILD_DIR=bin
 TEST_SCRIPT=scripts/run_tests.py
 
+# =============================================================================
+# Help and Documentation
+# =============================================================================
 help: ## Display this help message
 	@echo "Available commands:"
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-20s\033[0m %s\n", $$1, $$2}'
 
-# Dependencies and setup
+# =============================================================================
+# Development Environment Setup
+# =============================================================================
 deps: ## Install dependencies
 	go mod download
 	go mod tidy
 
-migrate-up: ## Run DB migrations up (requires golang-migrate cli)
-	migrate -path migrations -database "$(POSTGRES_DSN)" -verbose up
-
-migrate-down: ## Rollback last migration (requires golang-migrate cli)
-	migrate -path migrations -database "$(POSTGRES_DSN)" -verbose down 1
-
-# Build commands
+# =============================================================================
+# Development and Running
+# =============================================================================
 run: ## Run the application in development mode
 	go run nof0.go -f $(CONFIG_FILE)
 
+# =============================================================================
+# Build Commands
+# =============================================================================
 build: ## Build the application
 	@mkdir -p $(BUILD_DIR)
 	go build -o $(BUILD_DIR)/$(APP_NAME) nof0.go
@@ -44,7 +53,33 @@ clean: ## Clean build artifacts
 	rm -rf $(BUILD_DIR)
 	go clean
 
-# Test commands
+# =============================================================================
+# Database Operations (requires golang-migrate cli and POSTGRES_DSN env var)
+# =============================================================================
+migrate-up: ## Run all pending migrations
+	migrate -path migrations -database "$(POSTGRES_DSN)" -verbose up
+
+migrate-down: ## Rollback last migration
+	migrate -path migrations -database "$(POSTGRES_DSN)" -verbose down 1
+
+migrate-create: ## Create new migration file (usage: make migrate-create NAME=add_users)
+	@test -n "$(NAME)" || (echo "Error: NAME required. Usage: make migrate-create NAME=add_users" && exit 1)
+	migrate create -ext sql -dir migrations -seq $(NAME)
+
+migrate-status: ## Show current migration version
+	migrate -path migrations -database "$(POSTGRES_DSN)" version
+
+migrate-force: ## Force migration version (usage: make migrate-force VERSION=2)
+	@test -n "$(VERSION)" || (echo "Error: VERSION required. Usage: make migrate-force VERSION=2" && exit 1)
+	migrate -path migrations -database "$(POSTGRES_DSN)" force $(VERSION)
+
+model-gen: ## Regenerate Go models from database schema
+	@test -n "$(POSTGRES_DSN)" || (echo "Error: POSTGRES_DSN required" && exit 1)
+	goctl model pg datasource --url "$(POSTGRES_DSN)" --dir internal/model --cache --table "*"
+
+# =============================================================================
+# Test Commands
+# =============================================================================
 test: ## Run basic Go tests
 	go test -v ./...
 
@@ -68,7 +103,9 @@ test-cover: ## Generate test coverage report
 test-race: ## Run tests with race detector
 	go test -race ./...
 
-# Code quality commands
+# =============================================================================
+# Code Quality
+# =============================================================================
 lint: ## Run linter
 	golangci-lint run
 
@@ -80,7 +117,9 @@ check: fmt lint test ## Run all checks (format, lint, test)
 
 check-all: fmt lint test-all ## Run all checks including integration tests
 
-# Install
+# =============================================================================
+# Installation
+# =============================================================================
 install: build ## Install the binary
 	@cp $(BUILD_DIR)/$(APP_NAME) $(GOPATH)/bin/
 	@echo "Installed to $(GOPATH)/bin/$(APP_NAME)"

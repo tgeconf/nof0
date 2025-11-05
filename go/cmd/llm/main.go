@@ -430,7 +430,7 @@ func main() {
 	if persistService != nil && len(traderIDs) > 0 {
 		hydrateCtx, hydrateCancel := context.WithTimeout(context.Background(), 30*time.Second)
 		if err := persistService.HydrateCaches(hydrateCtx, traderIDs); err != nil {
-			logx.WithContext(hydrateCtx).Errorf("manager: hydrate caches err=%v", err)
+			panic(fmt.Sprintf("manager: hydrate caches err=%v", err))
 		}
 		hydrateCancel()
 	}
