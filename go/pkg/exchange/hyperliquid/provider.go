@@ -15,7 +15,7 @@ type clientAPI interface {
 	CancelOrder(ctx context.Context, asset int, oid int64) error
 	GetOpenOrders(ctx context.Context) ([]exchange.OrderStatus, error)
 	GetPositions(ctx context.Context) ([]exchange.Position, error)
-	ClosePosition(ctx context.Context, coin string) error
+	ClosePosition(ctx context.Context, coin string) (*exchange.OrderResponse, error)
 	UpdateLeverage(ctx context.Context, asset int, isCross bool, leverage int) error
 	GetAccountState(ctx context.Context) (*exchange.AccountState, error)
 	GetAccountValue(ctx context.Context) (float64, error)
@@ -83,7 +83,7 @@ func (p *Provider) GetPositions(ctx context.Context) ([]exchange.Position, error
 }
 
 // ClosePosition attempts to close an open position.
-func (p *Provider) ClosePosition(ctx context.Context, coin string) error {
+func (p *Provider) ClosePosition(ctx context.Context, coin string) (*exchange.OrderResponse, error) {
 	return p.client.ClosePosition(ctx, coin)
 }
 

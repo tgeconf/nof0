@@ -178,8 +178,9 @@ func TestSimProvider_ClosePosition(t *testing.T) {
 
 	// Test closing position
 	t.Run("close_position", func(t *testing.T) {
-		err := p.ClosePosition(ctx, "BTC")
+		resp, err := p.ClosePosition(ctx, "BTC")
 		assert.NoError(t, err)
+		assert.NotNil(t, resp)
 
 		positions, err := p.GetPositions(ctx)
 		assert.NoError(t, err)
@@ -188,8 +189,9 @@ func TestSimProvider_ClosePosition(t *testing.T) {
 
 	// Test closing position with canonicalization
 	t.Run("close_position_canonical", func(t *testing.T) {
-		err := p.ClosePosition(ctx, "btc")
+		resp, err := p.ClosePosition(ctx, "btc")
 		assert.NoError(t, err)
+		assert.Nil(t, resp)
 
 		positions, err := p.GetPositions(ctx)
 		assert.NoError(t, err)
@@ -359,8 +361,9 @@ func TestSimProvider_MultipleCoins(t *testing.T) {
 		assert.Equal(t, "1", ethPos.Szi)
 
 		// Close BTC position
-		err = p.ClosePosition(ctx, "BTC")
+		resp, err := p.ClosePosition(ctx, "BTC")
 		assert.NoError(t, err)
+		assert.NotNil(t, resp)
 
 		// Verify only ETH position remains
 		positions, err = p.GetPositions(ctx)

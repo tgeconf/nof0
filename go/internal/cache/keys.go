@@ -30,10 +30,20 @@ type TTLSet struct {
 // NewTTLSet converts config TTLs (in seconds) into durations.
 func NewTTLSet(cfg config.CacheTTL) TTLSet {
 	return TTLSet{
-		Short:  secondsToDuration(cfg.Short),
-		Medium: secondsToDuration(cfg.Medium),
-		Long:   secondsToDuration(cfg.Long),
+		Short:  durationOrDefault(cfg.Short, 10*time.Second),
+		Medium: durationOrDefault(cfg.Medium, time.Minute),
+		Long:   durationOrDefault(cfg.Long, 5*time.Minute),
 	}
+}
+
+func durationOrDefault(seconds int, fallback time.Duration) time.Duration {
+	if seconds < 0 {
+		return 0
+	}
+	if seconds == 0 {
+		return fallback
+	}
+	return time.Duration(seconds) * time.Second
 }
 
 // Duration returns the configured duration for the given TTL class.
@@ -57,13 +67,6 @@ func (t TTLSet) Scaled(class TTLClass, factor float64) time.Duration {
 		return base
 	}
 	return time.Duration(float64(base) * factor)
-}
-
-func secondsToDuration(seconds int) time.Duration {
-	if seconds <= 0 {
-		return 0
-	}
-	return time.Duration(seconds) * time.Second
 }
 
 func formatKey(parts ...string) string {

@@ -19,7 +19,7 @@ func (f *fakeLLM) ChatStream(ctx context.Context, req *llm.ChatRequest) (<-chan 
 	return nil, nil
 }
 
-func (f *fakeLLM) ChatStructured(_ context.Context, _ *llm.ChatRequest, target interface{}) (interface{}, error) {
+func (f *fakeLLM) ChatStructured(_ context.Context, _ *llm.ChatRequest, target interface{}) (*llm.ChatResponse, error) {
 	// Fill target via llm.ParseStructured-compatible JSON
 	jsonStr := `{
       "signal":"buy_to_enter",
@@ -35,7 +35,17 @@ func (f *fakeLLM) ChatStructured(_ context.Context, _ *llm.ChatRequest, target i
       "reasoning":"clear uptrend"
     }`
 	_ = llm.ParseStructured(jsonStr, target)
-	return nil, nil
+	return &llm.ChatResponse{
+		Model: "test-model",
+		Choices: []llm.Choice{
+			{Message: llm.Message{Role: "assistant", Content: jsonStr}},
+		},
+		Usage: llm.Usage{
+			PromptTokens:     100,
+			CompletionTokens: 50,
+			TotalTokens:      150,
+		},
+	}, nil
 }
 
 func (f *fakeLLM) GetConfig() *llm.Config { return &llm.Config{} }

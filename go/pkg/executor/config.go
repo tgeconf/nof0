@@ -26,6 +26,7 @@ type Config struct {
 	AllowedTraderIDs       []string            `yaml:"allowed_trader_ids"`
 	SigningKey             string              `yaml:"signing_key"`
 	Overrides              map[string]Override `yaml:"overrides"`
+	TraderID               string              `yaml:"-"` // runtime-only metadata for persistence hooks
 
 	DecisionIntervalRaw string `yaml:"decision_interval"`
 	DecisionTimeoutRaw  string `yaml:"decision_timeout"`

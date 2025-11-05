@@ -273,14 +273,14 @@ func (p *Provider) GetPositions(ctx context.Context) ([]exchange.Position, error
 }
 
 // ClosePosition fully closes the position for the given coin at the latest mark price.
-func (p *Provider) ClosePosition(ctx context.Context, coin string) error {
+func (p *Provider) ClosePosition(ctx context.Context, coin string) (*exchange.OrderResponse, error) {
 	c := canonical(coin)
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
 	state := p.positions[c]
 	if state == nil || state.Qty == 0 {
-		return nil
+		return nil, nil
 	}
 	price := p.resolveMarkPriceLocked(c)
 	if price <= 0 {
@@ -290,7 +290,7 @@ func (p *Provider) ClosePosition(ctx context.Context, coin string) error {
 	isBuy := state.Qty < 0
 	realized, filled, err := p.applyOrderLocked(c, price, size, isBuy, false)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if realized != 0 {
 		p.cash += realized
@@ -298,7 +298,24 @@ func (p *Provider) ClosePosition(ctx context.Context, coin string) error {
 	if filled > 0 {
 		p.markPx[c] = price
 	}
-	return nil
+	resp := &exchange.OrderResponse{
+		Status: "ok",
+		Response: exchange.OrderResponseData{
+			Type: "order",
+			Data: exchange.OrderResponseDataDetail{
+				Statuses: []exchange.OrderStatusResponse{
+					{
+						Filled: &exchange.FilledOrder{
+							TotalSz: formatDecimal(filled),
+							AvgPx:   formatDecimal(price),
+							Oid:     0,
+						},
+					},
+				},
+			},
+		},
+	}
+	return resp, nil
 }
 
 // UpdateLeverage stores leverage preferences for later margin calculations.

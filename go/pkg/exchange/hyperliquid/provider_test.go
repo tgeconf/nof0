@@ -35,9 +35,13 @@ func (m *MockClient) GetPositions(ctx context.Context) ([]exchange.Position, err
 	return args.Get(0).([]exchange.Position), args.Error(1)
 }
 
-func (m *MockClient) ClosePosition(ctx context.Context, coin string) error {
+func (m *MockClient) ClosePosition(ctx context.Context, coin string) (*exchange.OrderResponse, error) {
 	args := m.Called(ctx, coin)
-	return args.Error(0)
+	var resp *exchange.OrderResponse
+	if v := args.Get(0); v != nil {
+		resp = v.(*exchange.OrderResponse)
+	}
+	return resp, args.Error(1)
 }
 
 func (m *MockClient) UpdateLeverage(ctx context.Context, asset int, isCross bool, leverage int) error {
@@ -271,20 +275,22 @@ func TestProviderClosePosition(t *testing.T) {
 
 	// Test successful close
 	t.Run("successful_close", func(t *testing.T) {
-		mockClient.On("ClosePosition", ctx, "BTC").Return(nil)
+		mockClient.On("ClosePosition", ctx, "BTC").Return(&exchange.OrderResponse{Status: "ok"}, nil)
 
-		err := provider.ClosePosition(ctx, "BTC")
+		resp, err := provider.ClosePosition(ctx, "BTC")
 		assert.NoError(t, err)
+		assert.NotNil(t, resp)
 		mockClient.AssertExpectations(t)
 	})
 
 	// Test close failure
 	t.Run("close_failure", func(t *testing.T) {
 		mockClient.ExpectedCalls = nil // Reset expectations
-		mockClient.On("ClosePosition", ctx, "BTC").Return(assert.AnError)
+		mockClient.On("ClosePosition", ctx, "BTC").Return((*exchange.OrderResponse)(nil), assert.AnError)
 
-		err := provider.ClosePosition(ctx, "BTC")
+		resp, err := provider.ClosePosition(ctx, "BTC")
 		assert.Error(t, err)
+		assert.Nil(t, resp)
 		mockClient.AssertExpectations(t)
 	})
 }

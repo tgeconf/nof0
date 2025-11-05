@@ -25,16 +25,17 @@ type Executor interface {
 
 // BasicExecutor is a minimal implementation wiring configuration, prompt rendering and the LLM client.
 type BasicExecutor struct {
-	cfg         *Config
-	llm         llm.LLMClient
-	renderer    *PromptRenderer
-	performance *PerformanceView
-	modelAlias  string
-	failures    map[string]int
+	cfg           *Config
+	llm           llm.LLMClient
+	renderer      *PromptRenderer
+	performance   *PerformanceView
+	modelAlias    string
+	failures      map[string]int
+	conversations ConversationRecorder
 }
 
 // NewExecutor constructs a BasicExecutor. The templatePath is the executor prompt template provided by caller.
-func NewExecutor(cfg *Config, client llm.LLMClient, templatePath string, modelAlias string) (*BasicExecutor, error) {
+func NewExecutor(cfg *Config, client llm.LLMClient, templatePath string, modelAlias string, opts ...ExecutorOption) (*BasicExecutor, error) {
 	if cfg == nil {
 		return nil, errors.New("executor: config is required")
 	}
@@ -45,13 +46,23 @@ func NewExecutor(cfg *Config, client llm.LLMClient, templatePath string, modelAl
 	if err != nil {
 		return nil, err
 	}
-	return &BasicExecutor{
-		cfg:        cfg,
-		llm:        client,
-		renderer:   renderer,
-		modelAlias: strings.TrimSpace(modelAlias),
-		failures:   make(map[string]int),
-	}, nil
+	exec := &BasicExecutor{
+		cfg:           cfg,
+		llm:           client,
+		renderer:      renderer,
+		modelAlias:    strings.TrimSpace(modelAlias),
+		failures:      make(map[string]int),
+		conversations: noopConversationRecorder{},
+	}
+	for _, opt := range opts {
+		if opt != nil {
+			opt(exec)
+		}
+	}
+	if exec.conversations == nil {
+		exec.conversations = noopConversationRecorder{}
+	}
+	return exec, nil
 }
 
 // GetConfig returns the underlying configuration.
@@ -112,12 +123,13 @@ func (e *BasicExecutor) GetFullDecision(input *Context) (*FullDecision, error) {
 	callCtx, cancel := context.WithTimeout(context.Background(), e.cfg.DecisionTimeout)
 	defer cancel()
 	callStart := time.Now()
-	_, err = e.llm.ChatStructured(callCtx, req, &out)
+	resp, err := e.llm.ChatStructured(callCtx, req, &out)
 	if err != nil {
 		logx.WithContext(callCtx).Errorf("executor: chat failed digest=%s duration=%s error=%v", promptDigest, time.Since(callStart), err)
 		return &FullDecision{UserPrompt: promptStr, CoTTrace: "", Decisions: nil, Timestamp: time.Now()}, err
 	}
 	logx.WithContext(callCtx).Infof("executor: chat completed digest=%s duration=%s", promptDigest, time.Since(callStart))
+	e.recordConversation(callCtx, promptStr, resp)
 
 	// Phase 3: Map & validate.
 	mapped := mapDecisionContract(out, input.Positions)
@@ -183,6 +195,29 @@ func (e *BasicExecutor) logInputWarnings(input *Context) {
 	}
 	if len(input.CandidateCoins) == 0 && len(input.Positions) > 0 {
 		logx.Slowf("executor: no candidates provided while %d positions open", len(input.Positions))
+	}
+}
+
+func (e *BasicExecutor) recordConversation(ctx context.Context, prompt string, resp *llm.ChatResponse) {
+	if e == nil || e.conversations == nil || resp == nil || e.cfg == nil || strings.TrimSpace(e.cfg.TraderID) == "" {
+		return
+	}
+	if len(resp.Choices) == 0 {
+		return
+	}
+	ts := time.Now()
+	rec := ConversationRecord{
+		ModelID:          e.cfg.TraderID,
+		Prompt:           prompt,
+		PromptTokens:     resp.Usage.PromptTokens,
+		Response:         strings.TrimSpace(resp.Choices[0].Message.Content),
+		CompletionTokens: resp.Usage.CompletionTokens,
+		TotalTokens:      resp.Usage.TotalTokens,
+		ModelName:        resp.Model,
+		Timestamp:        ts,
+	}
+	if err := e.conversations.RecordConversation(ctx, rec); err != nil {
+		logx.WithContext(ctx).Errorf("executor: record conversation failed trader=%s err=%v", e.cfg.TraderID, err)
 	}
 }
 

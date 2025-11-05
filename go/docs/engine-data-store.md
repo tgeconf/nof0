@@ -130,16 +130,16 @@ Based on `internal/cache/keys.go`, the following cache keys are defined:
 | `manager.go:RegisterTrader` | **INSERT/UPDATE** | `models` | Register new trader | Insert model record with `id`, `name`, `exchange_provider`, `market_provider`, `config` JSON |
 | `manager.go:UpdatePerformanceMetrics` | **INSERT/UPDATE** | `model_analytics` | Store computed metrics | Insert/update rows for `sharpe_ratio`, `win_rate`, `total_trades`, `max_drawdown_pct` as separate metric records |
 | `manager.go:RunTradingLoop` | **UPDATE** | `trader_state` | Update trader state | After each decision cycle, update `last_decision_at`, `state`, `metadata` JSON (cooldowns, pause_until) |
-| `manager.go:writeJournalRecord` | **INSERT** | `decision_cycles` | Persist decision cycle | Insert cycle record with `model_id`, `cycle_ts_ms`, `prompt_digest`, `decisions_json`, `account_snapshot`, `success`, `error_message` |
+| `manager.go:writeJournalRecord` | **CALL** | `journal.WriteCycle` | Persist decision cycle | Delegate to journal layer (single owner) which handles Postgres insert + Redis cache updates |
 
-**Key Implementation Points:**
-- **manager.go:254-299 (`RunTradingLoop`)**: After calling `t.Executor.GetFullDecision`, write decision cycle to `decision_cycles` table
+- **manager.go:254-299 (`RunTradingLoop`)**: After calling `t.Executor.GetFullDecision`, invoke `writeJournalRecord`, which writes the cycle once via the journal module
 - **manager.go:ExecuteDecision** (new method needed): Wrap order execution with position DB writes
 - **manager.go:SyncTraderPositions** (new method needed): Periodic sync job to:
   1. Fetch positions from exchange via `GetPositions()`
   2. Update `positions` table with current prices/PnL
   3. Insert `account_equity_snapshots` row
   4. Update performance metrics in `model_analytics`
+- **manager.go:recordAnalytics + persistence**: Immediately after updating in-memory metrics and during sync, flush analytics to `model_analytics`, `analytics:{model_id}`, `since_inception:{model_id}`, and leaderboard caches
 
 #### 4.1.2 Database Read Operations
 
@@ -200,8 +200,10 @@ Based on `internal/cache/keys.go`, the following cache keys are defined:
 
 **Key Implementation Points:**
 - **executor.go:100-136 (`GetFullDecision`)**: After calling `llm.ChatStructured`, write conversation turn to `conversations` and `conversation_messages`
+- LLM client does not touch persistence; executor provides conversation IDs and token counts
 - Conversation tracking enables prompt debugging and LLM cost analysis
 - Store token counts from `Usage` fields in response
+- Persistence is injected via `executor.WithConversationRecorder`, backed by `internal/persistence/engine.Service`
 
 #### 4.2.2 Database Read Operations
 
@@ -281,14 +283,15 @@ Based on `internal/cache/keys.go`, the following cache keys are defined:
 - Fetch market snapshots (price, funding, OI)
 - Compute technical indicators (EMA, MACD, RSI, ATR)
 - List available assets with metadata
+- Persist market snapshots/metadata to Postgres + Redis via `internal/persistence/market/service.go` (wired in `cmd/llm/main.go` and injected into providers implementing `market.PersistenceAware`)
 
 #### 4.4.1 Database Write Operations
 
 | Location | Operation | Table | Description | Implementation Notes |
 |----------|-----------|-------|-------------|---------------------|
-| `hyperliquid/provider.go:ListAssets` | **INSERT/UPDATE** | `market_assets` | Persist static asset metadata | Upsert on `(provider, symbol)` with `base`, `quote`, `precision`, `is_active`, `max_leverage`, `only_isolated` |
-| `hyperliquid/provider.go:Snapshot` | **INSERT/UPDATE** | `market_asset_ctx` | Update volatile market context | Upsert on `(provider, symbol, ts_ms)` with `mark_price`, `funding_rate`, `open_interest`, `volume_24h` |
-| `hyperliquid/data.go:fetchKlines` | **INSERT** | `price_ticks` | Store historical price ticks | Insert OHLCV candles for indicator computation and backtesting |
+| `hyperliquid/provider.go:ListAssets` | **INSERT/UPDATE** | `market_assets` | Persist static asset metadata | Upsert on `(provider, symbol)` with `base`, `quote`, `precision`, `is_active`, `max_leverage`, `only_isolated` via `marketpersist.Service.UpsertAssets` |
+| `hyperliquid/provider.go:Snapshot` | **INSERT/UPDATE** | `market_asset_ctx` | Update volatile market context | Upsert on `(provider, symbol)` with latest `mark_price`, `funding_rate`, `open_interest` via `marketpersist.Service.RecordSnapshot` |
+| `hyperliquid/data.go:fetchKlines` | **INSERT** | `price_ticks` | Store historical price ticks | Insert OHLCV candles for indicator computation and backtesting (todo) |
 | `hyperliquid/provider.go:Snapshot` | **UPDATE** | `price_latest` | Update latest price | Upsert on `(provider, symbol)` with `price`, `ts_ms` |
 
 **Key Implementation Points:**
@@ -348,13 +351,13 @@ Based on `internal/cache/keys.go`, the following cache keys are defined:
 
 | Location | Operation | Table | Description | Implementation Notes |
 |----------|-----------|-------|-------------|---------------------|
-| `journal.go:WriteCycle` | **INSERT** | `decision_cycles` | Mirror journal to DB | Insert cycle record with `model_id`, `cycle_ts_ms`, `prompt_digest`, `decisions_json`, `cot_trace`, `account_snapshot`, `success`, `error_message` |
+| `journal.go:WriteCycle` | **INSERT** | `decision_cycles` | Persist journal cycle (source of truth) | Insert cycle record with `model_id`, `cycle_ts_ms`, `prompt_digest`, `decisions_json`, `cot_trace`, `account_snapshot`, `success`, `error_message` |
 
 **Key Implementation Points:**
-- **journal.go:46-65 (`WriteCycle`)**: After writing to filesystem, also insert to `decision_cycles` table
-- **Dual persistence**: Keep filesystem journal for debugging + DB for querying/analytics
+- **journal.go:46-65 (`WriteCycle`)**: Owns the single Postgres insert while still writing the JSON journal file
+- **Dual persistence**: Keep filesystem journal for debugging + DB for querying/analytics (driven by this method)
 - Consider **async write** to DB to avoid blocking journal writer
-- Use **transaction** to ensure atomicity with related `conversation_messages` inserts
+- Use **transaction** to ensure atomicity with related `conversation_messages` inserts (if linked)
 
 #### 4.5.2 Database Read Operations
 
@@ -394,10 +397,9 @@ Based on `internal/cache/keys.go`, the following cache keys are defined:
 
 | Location | Operation | Table | Description | Implementation Notes |
 |----------|-----------|-------|-------------|---------------------|
-| `client.go:Chat` | **INSERT** | `conversation_messages` | Log LLM request | Insert message with `role`, `content`, `tokens` (if executor provides conversation_id) |
-| `client.go:Chat` | **INSERT** | `conversation_messages` | Log LLM response | Insert response message |
+| N/A | - | - | LLM client remains stateless | Executor layer creates/stores conversations; the client only returns payloads |
 
-**Note:** LLM layer is typically stateless. Conversation persistence should be handled by the **executor layer** which has trader context.
+**Note:** Conversation persistence is centralized in `pkg/executor` to avoid duplicate inserts and to keep the LLM client transport-agnostic.
 
 #### 4.6.2 Database Read Operations
 
@@ -433,17 +435,17 @@ Based on `internal/cache/keys.go`, the following cache keys are defined:
 **Goal:** Capture all trading state for production operations and recovery
 
 1. **Manager - Position Lifecycle**
-   - [ ] `positions` table: INSERT on entry, UPDATE on fill/close
-   - [ ] `trades` table: INSERT on position close
-   - [ ] Redis `positions:{model_id}` hash: HSET on entry, HDEL on close
+   - [x] `positions` table: INSERT on entry, UPDATE on fill/close
+   - [x] `trades` table: INSERT on position close
+   - [x] Redis `positions:{model_id}` hash: HSET on entry, HDEL on close
 
 2. **Manager - Account Snapshots**
-   - [ ] `account_equity_snapshots`: INSERT periodic snapshots (every 5min)
-   - [ ] Redis `analytics:{model_id}`: SET after snapshot
+   - [x] `account_equity_snapshots`: INSERT periodic snapshots (every 5min)
+   - [x] Redis `analytics:{model_id}`: SET after snapshot
 
 3. **Manager - Decision Cycles**
-   - [ ] `decision_cycles`: INSERT after each LLM call
-   - [ ] Redis `decision:last:{model_id}`: SET after validation
+   - [x] `decision_cycles`: INSERT after each LLM call
+   - [x] Redis `decision:last:{model_id}`: SET after validation
 
 **Success Criteria:**
 - All positions persisted to DB and cached in Redis
@@ -457,17 +459,17 @@ Based on `internal/cache/keys.go`, the following cache keys are defined:
 **Goal:** Reduce external API calls and improve response times
 
 1. **Market - Price Caching**
-   - [ ] Redis `price:latest:{provider}:{symbol}`: SET after fetch
-   - [ ] Redis `crypto_prices` hash: HSET for aggregated view
-   - [ ] `price_latest` table: INSERT/UPDATE on fetch
+   - [x] Redis `price:latest:{provider}:{symbol}`: SET after fetch
+   - [x] Redis `crypto_prices` hash: HSET for aggregated view
+   - [x] `price_latest` table: INSERT/UPDATE on fetch
 
 2. **Market - Asset Metadata**
-   - [ ] `market_assets`: INSERT/UPDATE on ListAssets
-   - [ ] Redis `market:asset:{provider}:{symbol}`: SET with long TTL
+   - [x] `market_assets`: INSERT/UPDATE on ListAssets
+   - [x] Redis `market:asset:{provider}:{symbol}`: SET with long TTL
 
 3. **Market - Market Context**
-   - [ ] `market_asset_ctx`: INSERT periodic updates
-   - [ ] Redis `market:ctx:{provider}:{symbol}`: SET with medium TTL
+   - [x] `market_asset_ctx`: INSERT periodic updates
+   - [x] Redis `market:ctx:{provider}:{symbol}`: SET with medium TTL
 
 **Success Criteria:**
 - 90%+ cache hit rate for market snapshots
@@ -481,10 +483,10 @@ Based on `internal/cache/keys.go`, the following cache keys are defined:
 **Goal:** Enable real-time analytics and leaderboard
 
 1. **Manager - Performance Metrics**
-   - [ ] `model_analytics`: INSERT/UPDATE computed metrics
-   - [ ] Redis `analytics:{model_id}`: SET full payload
-   - [ ] Redis `since_inception:{model_id}`: SET cumulative stats
-   - [ ] Redis `leaderboard` ZSet: ZADD on metric update
+   - [x] `model_analytics`: INSERT/UPDATE computed metrics
+   - [x] Redis `analytics:{model_id}`: SET full payload
+   - [x] Redis `since_inception:{model_id}`: SET cumulative stats
+   - [x] Redis `leaderboard` ZSet: ZADD on metric update
 
 2. **Manager - Trader State**
    - [ ] `trader_state`: UPDATE on state changes
@@ -502,9 +504,9 @@ Based on `internal/cache/keys.go`, the following cache keys are defined:
 **Goal:** Enable LLM debugging and cost tracking
 
 1. **Executor - Conversation Tracking**
-   - [ ] `conversations`: INSERT on decision start
-   - [ ] `conversation_messages`: INSERT prompt + response
-   - [ ] Redis `conversations:{model_id}`: cache recent conversation IDs
+   - [x] `conversations`: INSERT on decision start
+   - [x] `conversation_messages`: INSERT prompt + response
+   - [x] Redis `conversations:{model_id}`: cache recent conversation IDs
 
 2. **Journal - DB Mirroring**
    - [ ] `decision_cycles`: INSERT from journal writer
@@ -788,22 +790,20 @@ Step 1: Manager.RunTradingLoop (every 1 second)
   |
   +--> Step 4: Manager.writeJournalRecord(cycle_data)
          |
-         +--> 4.1: DB Write - INSERT INTO decision_cycles
-         |          Fields: model_id, cycle_ts_ms, prompt_digest,
-         |                  decisions_json, cot_trace,
-         |                  account_snapshot, positions_snapshot,
-         |                  candidates, market_digest,
-         |                  success, error_message
+         +--> 4.1: Journal.WriteCycle(record)
+         |          - Writes JSON journal file
+         |          - Performs INSERT INTO decision_cycles with
+         |            fields: model_id, cycle_ts_ms, prompt_digest,
+         |            decisions_json, cot_trace, account_snapshot,
+         |            positions_snapshot, candidates, market_digest,
+         |            success, error_message
          |
          +--> 4.2: Redis Write - SET decision:last:{model_id}
          |          Value: {cycle_number, timestamp, success,
          |                  symbol, action, confidence, error_msg}
          |          TTL: 60s (medium)
          |
-         +--> 4.3: Journal.WriteCycle(record)
-                |
-                +--> Write: journal/{trader_id}/cycle_{ts}_{seq}.json
-                +--> Also: INSERT INTO decision_cycles (duplicate for safety)
+         +--> 4.3: (Already handled by Journal.WriteCycle)
   |
   +--> Step 5: [If decision valid] Manager.ExecuteDecision(decision)
          |

@@ -22,7 +22,7 @@ import (
 type LLMClient interface {
 	Chat(ctx context.Context, req *ChatRequest) (*ChatResponse, error)
 	ChatStream(ctx context.Context, req *ChatRequest) (<-chan StreamResponse, error)
-	ChatStructured(ctx context.Context, req *ChatRequest, target interface{}) (interface{}, error)
+	ChatStructured(ctx context.Context, req *ChatRequest, target interface{}) (*ChatResponse, error)
 	GetConfig() *Config
 	Close() error
 }
@@ -399,7 +399,7 @@ func (c *Client) ChatStream(ctx context.Context, req *ChatRequest) (<-chan Strea
 }
 
 // ChatStructured enforces structured output using JSON schema and decodes the result into target.
-func (c *Client) ChatStructured(ctx context.Context, req *ChatRequest, target interface{}) (interface{}, error) {
+func (c *Client) ChatStructured(ctx context.Context, req *ChatRequest, target interface{}) (*ChatResponse, error) {
 	if target == nil {
 		return nil, errors.New("llm: structured target cannot be nil")
 	}
@@ -440,7 +440,7 @@ func (c *Client) ChatStructured(ctx context.Context, req *ChatRequest, target in
 		})
 		return nil, err
 	}
-	return target, nil
+	return resp, nil
 }
 
 // GetConfig returns an immutable copy of the client configuration.

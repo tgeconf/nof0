@@ -11,7 +11,7 @@ type Provider interface {
 
 	// Position management.
 	GetPositions(ctx context.Context) ([]Position, error)
-	ClosePosition(ctx context.Context, coin string) error
+	ClosePosition(ctx context.Context, coin string) (*OrderResponse, error)
 	UpdateLeverage(ctx context.Context, asset int, isCross bool, leverage int) error
 
 	// Account information.

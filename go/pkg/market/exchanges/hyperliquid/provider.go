@@ -4,7 +4,10 @@ import (
 	"context"
 	"net/http"
 	"sort"
+	"strings"
 	"time"
+
+	"github.com/zeromicro/go-zero/core/logx"
 
 	"nof0-api/pkg/market"
 )
@@ -13,8 +16,10 @@ const defaultProviderTimeout = 8 * time.Second
 
 // Provider wraps Hyperliquid client calls behind the generic market.Provider contract.
 type Provider struct {
-	client  *Client
-	timeout time.Duration
+	client      *Client
+	timeout     time.Duration
+	persistence market.Persistence
+	providerID  string
 }
 
 type providerConfig struct {
@@ -76,7 +81,9 @@ func init() {
 		if len(clientOptions) > 0 {
 			opts = append(opts, WithClientOptions(clientOptions...))
 		}
-		return NewProvider(opts...), nil
+		provider := NewProvider(opts...)
+		provider.providerID = name
+		return provider, nil
 	})
 }
 
@@ -84,7 +91,13 @@ func init() {
 func (p *Provider) Snapshot(ctx context.Context, symbol string) (*market.Snapshot, error) {
 	ctx, cancel := p.withTimeout(ctx)
 	defer cancel()
-	return p.client.buildSnapshot(ctx, symbol)
+	snap, err := p.client.buildSnapshot(ctx, symbol)
+	if err == nil && snap != nil && p.persistence != nil {
+		if persistErr := p.persistence.RecordSnapshot(ctx, p.providerName(), snap); persistErr != nil {
+			logx.WithContext(ctx).Errorf("hyperliquid: persist snapshot %s err=%v", symbol, persistErr)
+		}
+	}
+	return snap, err
 }
 
 // ListAssets implements market.Provider by returning all supported symbols.
@@ -95,7 +108,13 @@ func (p *Provider) ListAssets(ctx context.Context) ([]market.Asset, error) {
 	if err := p.client.refreshSymbolDirectory(ctx); err != nil {
 		return nil, err
 	}
-	return p.collectAssets(), nil
+	assets := p.collectAssets()
+	if p.persistence != nil && len(assets) > 0 {
+		if err := p.persistence.UpsertAssets(ctx, p.providerName(), assets); err != nil {
+			logx.WithContext(ctx).Errorf("hyperliquid: persist assets err=%v", err)
+		}
+	}
+	return assets, nil
 }
 
 func (p *Provider) collectAssets() []market.Asset {
@@ -137,4 +156,16 @@ func (p *Provider) withTimeout(ctx context.Context) (context.Context, context.Ca
 		ctx = context.Background()
 	}
 	return context.WithTimeout(ctx, p.timeout)
+}
+
+// SetPersistence wires a persistence layer for market data.
+func (p *Provider) SetPersistence(persist market.Persistence) {
+	p.persistence = persist
+}
+
+func (p *Provider) providerName() string {
+	if strings.TrimSpace(p.providerID) != "" {
+		return p.providerID
+	}
+	return "hyperliquid"
 }

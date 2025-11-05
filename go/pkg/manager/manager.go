@@ -32,13 +32,14 @@ type ExecutorFactory interface {
 // BasicExecutorFactory is a minimal factory that adapts a TraderConfig into
 // an executor.Config and constructs a local executor.BasicExecutor.
 type BasicExecutorFactory struct {
-	llmClient llm.LLMClient
+	llmClient          llm.LLMClient
+	conversationLogger executorpkg.ConversationRecorder
 }
 
 // NewBasicExecutorFactory returns a factory that builds local executors using
 // the provided LLM client.
-func NewBasicExecutorFactory(client llm.LLMClient) *BasicExecutorFactory {
-	return &BasicExecutorFactory{llmClient: client}
+func NewBasicExecutorFactory(client llm.LLMClient, recorder executorpkg.ConversationRecorder) *BasicExecutorFactory {
+	return &BasicExecutorFactory{llmClient: client, conversationLogger: recorder}
 }
 
 // NewExecutor implements ExecutorFactory.
@@ -75,7 +76,12 @@ func (f *BasicExecutorFactory) NewExecutor(traderCfg TraderConfig) (executorpkg.
 		AllowedTraderIDs:       []string{traderCfg.ID},
 	}
 	// executor.NewExecutor validates config.
-	exec, err := executorpkg.NewExecutor(ec, f.llmClient, traderCfg.ExecutorTemplate, traderCfg.Model)
+	ec.TraderID = traderCfg.ID
+	var opts []executorpkg.ExecutorOption
+	if f.conversationLogger != nil {
+		opts = append(opts, executorpkg.WithConversationRecorder(f.conversationLogger))
+	}
+	exec, err := executorpkg.NewExecutor(ec, f.llmClient, traderCfg.ExecutorTemplate, traderCfg.Model, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -96,6 +102,7 @@ type Manager struct {
 	marketProviders   map[string]market.Provider
 
 	executorFactory ExecutorFactory
+	persistence     PersistenceService
 
 	stopChan chan struct{}
 	stopOnce sync.Once
@@ -108,9 +115,13 @@ func NewManager(
 	execFactory ExecutorFactory,
 	exch map[string]exchange.Provider,
 	mkts map[string]market.Provider,
+	persist PersistenceService,
 ) *Manager {
 	if cfg == nil {
 		cfg = &Config{}
+	}
+	if persist == nil {
+		persist = newNoopPersistenceService()
 	}
 	m := &Manager{
 		config:            cfg,
@@ -118,6 +129,7 @@ func NewManager(
 		exchangeProviders: make(map[string]exchange.Provider),
 		marketProviders:   make(map[string]market.Provider),
 		executorFactory:   execFactory,
+		persistence:       persist,
 		stopChan:          make(chan struct{}),
 	}
 	for k, v := range exch {
@@ -137,7 +149,7 @@ func InitializeManager(configPath string) (*Manager, error) {
 	if err != nil {
 		return nil, err
 	}
-	return NewManager(cfg, nil, nil, nil), nil
+	return NewManager(cfg, nil, nil, nil, nil), nil
 }
 
 // RegisterTrader creates a VirtualTrader from the provided configuration and
@@ -365,6 +377,16 @@ func (m *Manager) RunTradingLoop(ctx context.Context) error {
 					t.Performance.WinRate = float64(succ) / float64(total)
 				}
 				t.Performance.UpdatedAt = time.Now()
+				m.recordAnalytics(AnalyticsSnapshot{
+					TraderID:       t.ID,
+					TotalPnLUSD:    t.Performance.TotalPnLUSD,
+					TotalPnLPct:    t.Performance.TotalPnLPct,
+					SharpeRatio:    t.Performance.SharpeRatio,
+					WinRate:        t.Performance.WinRate,
+					TotalTrades:    t.Performance.TotalTrades,
+					MaxDrawdownPct: t.Performance.MaxDrawdownPct,
+					UpdatedAt:      t.Performance.UpdatedAt,
+				})
 
 				// Journal the cycle if configured
 				if t.Journal != nil && t.JournalEnabled {
@@ -409,10 +431,12 @@ func (m *Manager) ExecuteDecision(trader *VirtualTrader, decision *executorpkg.D
 	if decision.Action == "close_long" || decision.Action == "close_short" {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
+		var closeSnapPrice float64
 		if setter, ok := trader.ExchangeProvider.(interface {
 			SetMarkPrice(context.Context, string, float64) error
 		}); ok {
 			if snap, err := trader.MarketProvider.Snapshot(ctx, decision.Symbol); err == nil && snap != nil && snap.Price.Last > 0 {
+				closeSnapPrice = snap.Price.Last
 				_ = setter.SetMarkPrice(ctx, decision.Symbol, snap.Price.Last)
 			}
 		}
@@ -422,7 +446,8 @@ func (m *Manager) ExecuteDecision(trader *VirtualTrader, decision *executorpkg.D
 		}); ok {
 			_ = p.CancelAllBySymbol(ctx, decision.Symbol)
 		}
-		if err := trader.ExchangeProvider.ClosePosition(ctx, decision.Symbol); err != nil {
+		orderResp, err := trader.ExchangeProvider.ClosePosition(ctx, decision.Symbol)
+		if err != nil {
 			return err
 		}
 		logx.Infof("manager: trader %s closed position symbol=%s action=%s", trader.ID, decision.Symbol, decision.Action)
@@ -430,6 +455,26 @@ func (m *Manager) ExecuteDecision(trader *VirtualTrader, decision *executorpkg.D
 		trader.mu.Lock()
 		trader.Cooldown[decision.Symbol] = time.Now()
 		trader.mu.Unlock()
+		fillPrice, fillQty, ok := parseOrderFill(orderResp)
+		if !ok {
+			fillPrice = closeSnapPrice
+			if fillPrice <= 0 {
+				fillPrice = decision.EntryPrice
+			}
+		}
+		if fillQty <= 0 && fillPrice > 0 && decision.PositionSizeUSD > 0 {
+			fillQty = decision.PositionSizeUSD / fillPrice
+		}
+		m.recordPositionEvent(PositionEvent{
+			TraderID:         trader.ID,
+			Trader:           trader,
+			Decision:         *decision,
+			Event:            PositionEventClose,
+			ExchangeResponse: orderResp,
+			FillPrice:        fillPrice,
+			FillSize:         fillQty,
+			OccurredAt:       time.Now(),
+		})
 		return nil
 	}
 
@@ -488,6 +533,7 @@ func (m *Manager) ExecuteDecision(trader *VirtualTrader, decision *executorpkg.D
 	isBuy := decision.Action == "open_long"
 	priceStr := fmt.Sprintf("%.8f", price)
 	sizeStr := fmt.Sprintf("%.8f", qty)
+	var orderResp *exchange.OrderResponse
 
 	switch trader.OrderStyle {
 	case OrderStyleMarketIOC:
@@ -509,6 +555,7 @@ func (m *Manager) ExecuteDecision(trader *VirtualTrader, decision *executorpkg.D
 		if err != nil {
 			return fmt.Errorf("manager: market_ioc order %s %s: %w", decision.Symbol, decision.Action, err)
 		}
+		orderResp = resp
 		summary := summarizeOrderResponse(resp)
 		logx.Infof("manager: trader %s submitted market_ioc order symbol=%s notional=%.2f usd qty=%.6f slippage_bps=%.2f response=%s", trader.ID, decision.Symbol, decision.PositionSizeUSD, qty, trader.MarketIOCSlippageBps, summary)
 	case OrderStyleLimitIOC, "":
@@ -549,6 +596,7 @@ func (m *Manager) ExecuteDecision(trader *VirtualTrader, decision *executorpkg.D
 		if err != nil {
 			return fmt.Errorf("manager: place order %s %s: %w", decision.Symbol, decision.Action, err)
 		}
+		orderResp = resp
 		summary := summarizeOrderResponse(resp)
 		logx.Infof("manager: trader %s submitted limit_ioc order symbol=%s notional=%.2f usd qty=%.6f cloid=%s response=%s", trader.ID, decision.Symbol, decision.PositionSizeUSD, qty, cloid, summary)
 	default:
@@ -567,6 +615,16 @@ func (m *Manager) ExecuteDecision(trader *VirtualTrader, decision *executorpkg.D
 		_ = p.SetStopLoss(ctx, decision.Symbol, side, qty, decision.StopLoss)
 		_ = p.SetTakeProfit(ctx, decision.Symbol, side, qty, decision.TakeProfit)
 	}
+	m.recordPositionEvent(PositionEvent{
+		TraderID:         trader.ID,
+		Trader:           trader,
+		Decision:         *decision,
+		Event:            PositionEventOpen,
+		ExchangeResponse: orderResp,
+		FillPrice:        price,
+		FillSize:         qty,
+		OccurredAt:       time.Now(),
+	})
 	return nil
 }
 
@@ -614,6 +672,26 @@ func (m *Manager) SyncTraderPositions(traderID string) error {
 	t.UpdatedAt = time.Now()
 	t.mu.Unlock()
 	logx.Infof("manager: trader %s equity=%.2f usd margin_used=%.2f usd avail=%.2f usd unreal_pnl=%.2f usd", traderID, acctVal, marginUsed, t.ResourceAlloc.AvailableBalanceUSD, unreal)
+	m.recordAccountSnapshot(AccountSyncSnapshot{
+		TraderID:            traderID,
+		EquityUSD:           acctVal,
+		MarginUsedUSD:       marginUsed,
+		AvailableBalanceUSD: t.ResourceAlloc.AvailableBalanceUSD,
+		UnrealizedPnLUSD:    unreal,
+		SyncedAt:            time.Now(),
+	})
+	if t.Performance != nil {
+		m.recordAnalytics(AnalyticsSnapshot{
+			TraderID:       traderID,
+			TotalPnLUSD:    t.Performance.TotalPnLUSD,
+			TotalPnLPct:    t.Performance.TotalPnLPct,
+			SharpeRatio:    t.Performance.SharpeRatio,
+			WinRate:        t.Performance.WinRate,
+			TotalTrades:    t.Performance.TotalTrades,
+			MaxDrawdownPct: t.Performance.MaxDrawdownPct,
+			UpdatedAt:      t.Performance.UpdatedAt,
+		})
+	}
 	return nil
 }
 
@@ -682,8 +760,102 @@ func summarizeOrderResponse(resp *exchange.OrderResponse) string {
 	return fmt.Sprintf("status=%s %s", status, summary)
 }
 
+func parseOrderFill(resp *exchange.OrderResponse) (price float64, qty float64, ok bool) {
+	if resp == nil {
+		return 0, 0, false
+	}
+	for _, st := range resp.Response.Data.Statuses {
+		if st.Filled == nil {
+			continue
+		}
+		if px, err := strconv.ParseFloat(strings.TrimSpace(st.Filled.AvgPx), 64); err == nil && px > 0 {
+			price = px
+		}
+		if sz, err := strconv.ParseFloat(strings.TrimSpace(st.Filled.TotalSz), 64); err == nil && sz > 0 {
+			qty = sz
+		}
+		if price > 0 || qty > 0 {
+			return price, qty, true
+		}
+	}
+	return 0, 0, false
+}
+
+func (m *Manager) recordPositionEvent(event PositionEvent) {
+	if m == nil || m.persistence == nil {
+		return
+	}
+	if event.TraderID == "" && event.Trader != nil {
+		event.TraderID = event.Trader.ID
+	}
+	if event.OccurredAt.IsZero() {
+		event.OccurredAt = time.Now()
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	err := m.persistence.RecordPositionEvent(ctx, event)
+	logPersistenceError(err, "position event persistence failed", map[string]any{
+		"trader_id": event.TraderID,
+		"symbol":    event.Decision.Symbol,
+		"event":     event.Event,
+	})
+}
+
+func (m *Manager) recordDecisionCycle(record DecisionCycleRecord) {
+	if m == nil || m.persistence == nil || record.Cycle == nil {
+		return
+	}
+	if record.TraderID == "" && record.Cycle != nil {
+		record.TraderID = record.Cycle.TraderID
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	err := m.persistence.RecordDecisionCycle(ctx, record)
+	logPersistenceError(err, "decision cycle persistence failed", map[string]any{
+		"trader_id": record.TraderID,
+		"success":   record.Cycle.Success,
+	})
+}
+
+func (m *Manager) recordAccountSnapshot(snapshot AccountSyncSnapshot) {
+	if m == nil || m.persistence == nil {
+		return
+	}
+	if snapshot.TraderID == "" {
+		return
+	}
+	if snapshot.SyncedAt.IsZero() {
+		snapshot.SyncedAt = time.Now()
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	err := m.persistence.RecordAccountSnapshot(ctx, snapshot)
+	logPersistenceError(err, "account snapshot persistence failed", map[string]any{
+		"trader_id": snapshot.TraderID,
+		"equity":    snapshot.EquityUSD,
+		"margin":    snapshot.MarginUsedUSD,
+	})
+}
+
+func (m *Manager) recordAnalytics(snapshot AnalyticsSnapshot) {
+	if m == nil || m.persistence == nil || strings.TrimSpace(snapshot.TraderID) == "" {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	err := m.persistence.RecordAnalytics(ctx, snapshot)
+	logPersistenceError(err, "analytics persistence failed", map[string]any{
+		"trader_id": snapshot.TraderID,
+		"win_rate":  snapshot.WinRate,
+		"pnl_pct":   snapshot.TotalPnLPct,
+	})
+}
+
 func (m *Manager) writeJournalRecord(t *VirtualTrader, ectx *executorpkg.Context, out *executorpkg.FullDecision, decisionsJSON string, actions []map[string]any, callErr error, allOK bool) error {
-	if t == nil || t.Journal == nil || ectx == nil {
+	if t == nil || ectx == nil {
+		return nil
+	}
+	if !t.JournalEnabled || t.Journal == nil {
 		return nil
 	}
 	acc := map[string]any{
@@ -753,7 +925,14 @@ func (m *Manager) writeJournalRecord(t *VirtualTrader, ectx *executorpkg.Context
 	if callErr != nil {
 		rec.ErrorMessage = callErr.Error()
 	}
-	_, err := t.Journal.WriteCycle(rec)
+	var err error
+	if t.Journal != nil {
+		_, err = t.Journal.WriteCycle(rec)
+	}
+	m.recordDecisionCycle(DecisionCycleRecord{
+		TraderID: t.ID,
+		Cycle:    rec,
+	})
 	return err
 }
 

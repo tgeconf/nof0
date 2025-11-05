@@ -21,7 +21,7 @@ func (s *slowLLM) ChatStream(ctx context.Context, req *llm.ChatRequest) (<-chan 
 	go func() { <-ctx.Done(); close(ch) }()
 	return ch, ctx.Err()
 }
-func (s *slowLLM) ChatStructured(ctx context.Context, req *llm.ChatRequest, target interface{}) (interface{}, error) {
+func (s *slowLLM) ChatStructured(ctx context.Context, req *llm.ChatRequest, target interface{}) (*llm.ChatResponse, error) {
 	<-ctx.Done()
 	return nil, ctx.Err()
 }

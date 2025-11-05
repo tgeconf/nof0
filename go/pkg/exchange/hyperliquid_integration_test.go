@@ -76,7 +76,7 @@ func (s *HLIntegrationSuite) TearDownTest() {
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
 	_ = s.Provider.CancelAllBySymbol(ctx, s.Coin)
-	_ = s.Provider.ClosePosition(ctx, s.Coin)
+	_, _ = s.Provider.ClosePosition(ctx, s.Coin)
 }
 
 // Strictly verify account state endpoint shape/behavior.
@@ -136,7 +136,11 @@ func (s *HLIntegrationSuite) Test_OrderLifecycle_Strict() {
 
 	// Cleanup: cancel-all and close position must succeed (best effort but strict for surfacing issues).
 	s.Require().NoError(s.Provider.CancelAllBySymbol(ctx, s.Coin), "CancelAllBySymbol")
-	s.Require().NoError(s.Provider.ClosePosition(ctx, s.Coin), "ClosePosition")
+	resp, err := s.Provider.ClosePosition(ctx, s.Coin)
+	s.Require().NoError(err, "ClosePosition")
+	if resp != nil {
+		s.T().Logf("close response: %+v", resp.Status)
+	}
 }
 
 // Modifier and cancel-by-cloid lifecycle using newly added writable helpers.

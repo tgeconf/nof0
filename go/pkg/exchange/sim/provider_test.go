@@ -28,8 +28,9 @@ func TestSimProvider_BasicFlow(t *testing.T) {
 	assert.Len(t, pos, 1, "should have 1 position")
 	assert.Equal(t, "0.01", pos[0].Szi, "position size should be 0.01")
 
-	err = p.ClosePosition(ctx, "BTC")
+	resp, err := p.ClosePosition(ctx, "BTC")
 	assert.NoError(t, err, "ClosePosition should not error")
+	assert.NotNil(t, resp, "ClosePosition response should not be nil")
 
 	pos, err = p.GetPositions(ctx)
 	assert.NoError(t, err, "GetPositions should not error")

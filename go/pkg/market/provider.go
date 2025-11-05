@@ -10,6 +10,11 @@ type Provider interface {
 	ListAssets(ctx context.Context) ([]Asset, error)
 }
 
+// PersistenceAware indicates the provider can accept persistence hooks.
+type PersistenceAware interface {
+	SetPersistence(p Persistence)
+}
+
 // Snapshot captures a normalized market view for a trading symbol.
 type Snapshot struct {
 	Symbol       string            // Exchange symbol as traded

@@ -11,15 +11,15 @@
 
 ## P1 – core trading loop persistence (Week 1–2)
 
-3. **Augment `ExecuteDecision` (open path) with Postgres + Redis writes.**
+3. [x] **Augment `ExecuteDecision` (open path) with Postgres + Redis writes.**
    - After a successful exchange submission, insert/ upsert into `positions`, include fill metadata, and update the `nof0:positions:{model_id}` hash.
    - Ensure cache-aside ordering (DB first, cache second) and guard against duplicate opens via idempotency keys.
-4. **Handle closes with full lifecycle bookkeeping.**
+4. [x] **Handle closes with full lifecycle bookkeeping.**
    - On `close_long/close_short`, update `positions` status, insert `trades`, compute realized PnL/fees, and trim Redis caches (`HDEL`, `LPUSH` recent trades, `XADD` stream).
    - Wrap DB work in a transaction to keep position+trade consistent.
-5. **Persist decision-cycle/journal data.**
+5. [x] **Persist decision-cycle/journal data.**
    - Extend `writeJournalRecord` (or a new hook) to insert into `decision_cycles` and refresh `nof0:decision:last:{model_id}` while still writing the JSON journal file.
-6. **Implement `SyncTraderPositions` writes.**
+6. [x] **Implement `SyncTraderPositions` writes.**
    - Batch insert `account_equity_snapshots`, update `model_analytics`, and refresh analytics/leaderboard caches with throttling (e.g., min 5 min between snapshots per trader).
 
 ## P2 – market data + consistency (Week 2–3)

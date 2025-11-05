@@ -110,8 +110,9 @@ func TestClosePosition(t *testing.T) {
 		assert.NoError(t, err)
 		client.infoURL = server.URL
 
-		err = client.ClosePosition(context.Background(), "BTC")
+		resp, err := client.ClosePosition(context.Background(), "BTC")
 		assert.NoError(t, err) // No error when position doesn't exist
+		assert.Nil(t, resp)
 	})
 }
 

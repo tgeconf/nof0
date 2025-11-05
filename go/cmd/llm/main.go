@@ -11,12 +11,17 @@ import (
 
 	"github.com/zeromicro/go-zero/core/logx"
 
+	"nof0-api/internal/cache"
 	"nof0-api/internal/cli"
 	appconfig "nof0-api/internal/config"
+	enginepersist "nof0-api/internal/persistence/engine"
+	marketpersist "nof0-api/internal/persistence/market"
+	"nof0-api/internal/svc"
 	"nof0-api/pkg/confkit"
 	exchangepkg "nof0-api/pkg/exchange"
 	_ "nof0-api/pkg/exchange/hyperliquid"
 	_ "nof0-api/pkg/exchange/sim"
+	executorpkg "nof0-api/pkg/executor"
 	llmpkg "nof0-api/pkg/llm"
 	managerpkg "nof0-api/pkg/manager"
 	marketpkg "nof0-api/pkg/market"
@@ -26,6 +31,12 @@ import (
 type filteredMarket struct {
 	marketpkg.Provider
 	allowed map[string]struct{}
+}
+
+func (f *filteredMarket) SetPersistence(persist marketpkg.Persistence) {
+	if aware, ok := f.Provider.(marketpkg.PersistenceAware); ok {
+		aware.SetPersistence(persist)
+	}
 }
 
 func newFilteredMarket(base marketpkg.Provider, symbols []string) (*filteredMarket, error) {
@@ -246,11 +257,13 @@ func main() {
 	logx.MustSetup(logx.LogConf{})
 	logx.DisableStat()
 
+	var runtimeCfg *appconfig.Config
 	if strings.TrimSpace(*appConfig) != "" {
 		if cfg, err := appconfig.Load(*appConfig); err != nil {
 			logx.Errorf("load app config %s: %v", *appConfig, err)
 		} else {
 			cli.LogConfigSummary(cfg)
+			runtimeCfg = cfg
 		}
 	}
 
@@ -345,8 +358,60 @@ func main() {
 		fatalf("manager trader %s references unknown model %s", trader.ID, trader.Model)
 	}
 
-	execFactory := managerpkg.NewBasicExecutorFactory(llmClient)
-	mgr := managerpkg.NewManager(managerCfg, execFactory, exchangeProviders, filteredMarkets)
+	var (
+		persistService managerpkg.PersistenceService
+		marketPersist  marketpkg.Persistence
+		svcCtx         *svc.ServiceContext
+	)
+	if runtimeCfg != nil {
+		svcCtx = svc.NewServiceContext(*runtimeCfg, runtimeCfg.MainPath())
+		ttlSet := cache.NewTTLSet(runtimeCfg.TTL)
+		if runtimeCfg.TTL.Short == 0 && runtimeCfg.TTL.Medium == 0 && runtimeCfg.TTL.Long == 0 {
+			logx.Slowf("cache ttl config missing; using defaults short=%s medium=%s long=%s", ttlSet.Short, ttlSet.Medium, ttlSet.Long)
+		}
+		persistService = enginepersist.NewService(enginepersist.Config{
+			SQLConn:                   svcCtx.DBConn,
+			PositionsModel:            svcCtx.PositionsModel,
+			TradesModel:               svcCtx.TradesModel,
+			SnapshotsModel:            svcCtx.AccountEquitySnapshotsModel,
+			DecisionModel:             svcCtx.DecisionCyclesModel,
+			AnalyticsModel:            svcCtx.ModelAnalyticsModel,
+			Cache:                     svcCtx.Cache,
+			TTL:                       ttlSet,
+			ConversationsModel:        svcCtx.ConversationsModel,
+			ConversationMessagesModel: svcCtx.ConversationMessagesModel,
+		})
+		marketPersist = marketpersist.NewService(marketpersist.Config{
+			SQLConn:          svcCtx.DBConn,
+			AssetsModel:      svcCtx.MarketAssetsModel,
+			AssetCtxModel:    svcCtx.MarketAssetCtxModel,
+			PriceLatestModel: svcCtx.PriceLatestModel,
+			Cache:            svcCtx.Cache,
+			TTL:              ttlSet,
+		})
+		if persistService == nil {
+			logx.Slowf("manager persistence disabled: postgres/cache not configured in %s", *appConfig)
+		} else {
+			logx.Infof("manager persistence enabled via %s", *appConfig)
+		}
+	}
+	if marketPersist != nil {
+		for name, provider := range marketProviders {
+			if aware, ok := provider.(marketpkg.PersistenceAware); ok {
+				aware.SetPersistence(marketPersist)
+			}
+			if wrapped, ok := filteredMarkets[name].(marketpkg.PersistenceAware); ok {
+				wrapped.SetPersistence(marketPersist)
+			}
+		}
+	}
+	var conversationRecorder executorpkg.ConversationRecorder
+	if rec, ok := persistService.(executorpkg.ConversationRecorder); ok {
+		conversationRecorder = rec
+	}
+	execFactory := managerpkg.NewBasicExecutorFactory(llmClient, conversationRecorder)
+
+	mgr := managerpkg.NewManager(managerCfg, execFactory, exchangeProviders, filteredMarkets, persistService)
 
 	for _, traderCfg := range managerCfg.Traders {
 		vt, regErr := mgr.RegisterTrader(traderCfg)

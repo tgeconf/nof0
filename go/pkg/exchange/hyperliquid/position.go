@@ -22,10 +22,10 @@ func (c *Client) GetPositions(ctx context.Context) ([]exchange.Position, error) 
 }
 
 // ClosePosition submits a reduce-only order to flatten the specified coin.
-func (c *Client) ClosePosition(ctx context.Context, coin string) error {
+func (c *Client) ClosePosition(ctx context.Context, coin string) (*exchange.OrderResponse, error) {
 	positions, err := c.GetPositions(ctx)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	var target *exchange.Position
 	for i := range positions {
@@ -35,26 +35,29 @@ func (c *Client) ClosePosition(ctx context.Context, coin string) error {
 		}
 	}
 	if target == nil {
-		return nil
+		return nil, nil
 	}
 
 	assetIdx, err := c.GetAssetIndex(ctx, coin)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	info, err := c.GetAssetInfo(ctx, coin)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	order, shouldExecute, err := buildCloseOrder(assetIdx, info.MarkPx, *target)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if !shouldExecute {
-		return nil
+		return nil, nil
 	}
-	_, err = c.PlaceOrder(ctx, order)
-	return err
+	resp, err := c.PlaceOrder(ctx, order)
+	if err != nil {
+		return nil, err
+	}
+	return resp, nil
 }
 
 // UpdateLeverage adjusts leverage for a given asset.
