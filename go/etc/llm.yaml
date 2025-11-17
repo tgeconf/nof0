@@ -1,4 +1,7 @@
 base_url: "https://zenmux.ai/api/v1"
+# For local development without LLM, this is a placeholder key
+# Set ZENMUX_API_KEY environment variable if you have a real key
+# The placeholder will be replaced by environment variable if set
 api_key: "${ZENMUX_API_KEY}"
 # Default model used at runtime. In unit tests you can enable low-cost
 # overrides via environment variables without changing this file:

@@ -17,10 +17,11 @@ Postgres:
 
 Cache:
   # Cache__0__* keys must also be surfaced through YAML; raw env vars alone are ignored.
+  # For local development without Redis, leave Host empty or comment out this section
   - Host: "${Cache__0__Host}"
     Type: node
     Pass: "${Cache__0__Pass}"
-    Tls: ${Cache__0__Tls}
+    Tls: false  # Set to true if using TLS, or use environment variable: Cache__0__Tls=true
     Weight: 100
 
 TTL:

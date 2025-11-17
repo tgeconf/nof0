@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 
 // Run on the Edge to avoid origin transfer; rely on CDN/browser caching.
-export const runtime = "edge";
+// Temporarily disabled for local development to avoid routing issues
+// export const runtime = "edge";
 
 const UPSTREAM = process.env.NOF1_API_BASE_URL || "https://nof1.ai/api";
 
@@ -50,46 +51,67 @@ export async function GET(
   req: NextRequest,
   ctx: { params: Promise<{ path: string[] }> },
 ) {
-  const { path } = await ctx.params;
-  const parts = (path || []).filter(Boolean);
-  const subpath = parts.join("/");
-  const target = `${UPSTREAM}/${subpath}${req.nextUrl.search}`;
+  try {
+    const params = await ctx.params;
+    // Handle Next.js 16 catch-all route parameter
+    const pathParam = params.path;
+    const parts = Array.isArray(pathParam) ? pathParam : (pathParam ? [pathParam] : []);
+    const subpath = parts.filter(Boolean).join("/");
 
-  // Forward conditional headers so upstream can 304; minimizes bytes back.
-  const passHeaders: Record<string, string> = { Accept: "application/json" };
-  const ifNoneMatch = req.headers.get("if-none-match");
-  const ifModifiedSince = req.headers.get("if-modified-since");
-  if (ifNoneMatch) passHeaders["if-none-match"] = ifNoneMatch;
-  if (ifModifiedSince) passHeaders["if-modified-since"] = ifModifiedSince;
+    // Debug log (will appear in Next.js dev server console)
+    console.log("[API Route] Path param:", pathParam, "Parts:", parts, "Subpath:", subpath);
 
-  const upstream = await fetch(target, {
-    // never cache at the edge fetch layer; rely on response headers we set below
-    cache: "no-store",
-    headers: passHeaders,
-  });
+    // UPSTREAM might not include /api, so we need to add it
+    // If UPSTREAM ends with /api, use it as is; otherwise append /api
+    const baseUrl = UPSTREAM.endsWith('/api') ? UPSTREAM : `${UPSTREAM}/api`;
+    const target = `${baseUrl}${subpath ? `/${subpath}` : ''}${req.nextUrl.search}`;
+    console.log("[API Route] Target URL:", target);
 
-  // Stream the upstream body through without buffering large payloads in memory.
-  const res = new NextResponse(upstream.body, {
-    status: upstream.status,
-    headers: {
-      "content-type":
-        upstream.headers.get("content-type") ||
-        "application/json; charset=utf-8",
-      "cache-control": cacheHeaderFor(parts),
-      "cdn-cache-control": cacheHeaderFor(parts),
-      // Helpful for cross-origin local dev; safe for public data here.
-      "access-control-allow-origin": "*",
-      // Propagate ETag/Last-Modified when present to enable browser revalidation.
-      ...(upstream.headers.get("etag")
-        ? { etag: upstream.headers.get("etag")! }
-        : {}),
-      ...(upstream.headers.get("last-modified")
-        ? { "last-modified": upstream.headers.get("last-modified")! }
-        : {}),
-      Vary: "Accept-Encoding",
-    },
-  });
-  return res;
+    // Forward conditional headers so upstream can 304; minimizes bytes back.
+    const passHeaders: Record<string, string> = { Accept: "application/json" };
+    const ifNoneMatch = req.headers.get("if-none-match");
+    const ifModifiedSince = req.headers.get("if-modified-since");
+    if (ifNoneMatch) passHeaders["if-none-match"] = ifNoneMatch;
+    if (ifModifiedSince) passHeaders["if-modified-since"] = ifModifiedSince;
+
+    const upstream = await fetch(target, {
+      // never cache at the edge fetch layer; rely on response headers we set below
+      cache: "no-store",
+      headers: passHeaders,
+    });
+
+    // Stream the upstream body through without buffering large payloads in memory.
+    const res = new NextResponse(upstream.body, {
+      status: upstream.status,
+      headers: {
+        "content-type":
+          upstream.headers.get("content-type") ||
+          "application/json; charset=utf-8",
+        "cache-control": cacheHeaderFor(parts),
+        "cdn-cache-control": cacheHeaderFor(parts),
+        // Helpful for cross-origin local dev; safe for public data here.
+        "access-control-allow-origin": "*",
+        // Propagate ETag/Last-Modified when present to enable browser revalidation.
+        ...(upstream.headers.get("etag")
+          ? { etag: upstream.headers.get("etag")! }
+          : {}),
+        ...(upstream.headers.get("last-modified")
+          ? { "last-modified": upstream.headers.get("last-modified")! }
+          : {}),
+        Vary: "Accept-Encoding",
+      },
+    });
+    return res;
+  } catch (error) {
+    console.error("API route error:", error);
+    return new NextResponse(
+      JSON.stringify({ error: "Internal server error", details: String(error) }),
+      {
+        status: 500,
+        headers: { "content-type": "application/json" },
+      }
+    );
+  }
 }
 
 export async function OPTIONS() {
